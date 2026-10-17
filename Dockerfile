@@ -13,8 +13,9 @@ RUN groupadd --system --gid 1000 app && useradd --system --uid 1000 --gid app ap
 WORKDIR /app
 COPY --from=builder /install /usr/local
 COPY --chown=app:app . .
+# collectstatic only loads settings: placeholder secrets, no database connection.
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh \
-    && DJANGO_SECRET_KEY=build python manage.py collectstatic --noinput
+    && DJANGO_SECRET_KEY=build DATABASE_URL=sqlite:////tmp/build.db python manage.py collectstatic --noinput
 USER app
 EXPOSE 8000
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

@@ -24,7 +24,13 @@ _railway_domain = env('RAILWAY_PUBLIC_DOMAIN', default='')
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
 
-CSRF_TRUSTED_ORIGINS = [f'https://{DOMAIN}']
+# Other hosts that serve the API, comma separated (e.g. the Cloud Run URL: condorin-api-xxxx.a.run.app).
+_extra_hosts = env.list('EXTRA_ALLOWED_HOSTS', default=[])
+ALLOWED_HOSTS += _extra_hosts
+
+# The admin login posts a form, so every host that serves it must be a trusted origin ('.run.app' → '*.run.app').
+CSRF_TRUSTED_ORIGINS = [f'https://{DOMAIN}'] + [f'https://*{h}' if h.startswith('.') else f'https://{h}'
+                                                for h in _extra_hosts]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -109,6 +115,8 @@ STORAGES = {
 CORS_ALLOWED_ORIGINS = [FRONTEND_URL, 'https://www.condorin.pe'] + [
     o.strip() for o in env('ADDITIONAL_CORS_ORIGINS', default='').split(',') if o.strip()
 ]
+# Origins that change per deploy, as regexes (e.g. Vercel previews: ^https://condorin-[a-z0-9-]+\.vercel\.app$).
+CORS_ALLOWED_ORIGIN_REGEXES = env.list('CORS_ALLOWED_ORIGIN_REGEXES', default=[])
 CORS_EXPOSE_HEADERS = ['x-request-id']
 
 REST_FRAMEWORK = {

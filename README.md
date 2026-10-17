@@ -105,13 +105,52 @@ Prisma tables. That is how the users were carried over on 2026-10-17. The backup
 Tests never touch production rows. pytest creates a separate `test_condorin` database on the same
 server and drops it at the end.
 
-## Deploy (Railway)
+## Deploy
 
-`railway.json` builds with Nixpacks (`build_scripts/build.sh`), migrates on start, and runs gunicorn with
-threads. The health check is `/healthz/`. Point `api.condorin.pe` at the service and set the variables
-from `.env.template`. Before the first real alert:
+Either platform works. Whichever serves `api.condorin.pe`, set the variables from `.env.template` and,
+before the first real alert:
 
 1. Submit the `condorin_alerta` template (`create_alert_template --submit`) and wait for Meta to approve it.
 2. Give the GCS service account `storage.objects.get` on the detector buckets. It needs a key to sign links.
 3. Configure the detector: an OIDC token with audience `https://api.condorin.pe/api/v1/detections` from a
    service account listed in `DETECTIONS_ALLOWED_SERVICE_ACCOUNTS`, or the shared secret.
+
+### Railway
+
+`railway.json` builds with Nixpacks (`build_scripts/build.sh`), migrates on start, and runs gunicorn with
+threads. The health check is `/healthz/`.
+
+### Cloud Run
+
+The `Dockerfile` builds the image (`.dockerignore` keeps `.env` out of it), the entrypoint migrates
+unless `RUN_MIGRATIONS=0`, and gunicorn listens on the `$PORT` Cloud Run injects.
+
+```bash
+REGION=us-central1
+# Secrets go in Secret Manager; the service account needs roles/secretmanager.secretAccessor.
+for s in DJANGO_SECRET_KEY DATABASE_URL WA_TOKEN DETECTIONS_SHARED_SECRET GCS_CREDENTIALS_JSON EMAIL_HOST_PASSWORD; do
+  printf '%s' "<value>" | gcloud secrets create $s --data-file=-
+done
+
+gcloud run deploy condorin-api --source . --region $REGION --allow-unauthenticated \
+  --no-cpu-throttling --min-instances 1 --max-instances 3 --memory 1Gi --cpu 1 --timeout 60 \
+  --set-env-vars DOMAIN=api.condorin.pe,EXTRA_ALLOWED_HOSTS=.run.app,FRONTEND_URL=https://condorin.pe,WA_PHONE_NUMBER_ID=<id>,WA_WABA_ID=<id>,GCS_PROJECT_ID=<project>,DETECTIONS_ALLOWED_SERVICE_ACCOUNTS=<sa> \
+  --set-secrets DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,DATABASE_URL=DATABASE_URL:latest,WA_TOKEN=WA_TOKEN:latest,DETECTIONS_SHARED_SECRET=DETECTIONS_SHARED_SECRET:latest,GCS_CREDENTIALS_JSON=GCS_CREDENTIALS_JSON:latest,EMAIL_HOST_PASSWORD=EMAIL_HOST_PASSWORD:latest
+```
+
+- **`--no-cpu-throttling` is required.** Alerts go out on a thread after the webhook responds, and by
+  default Cloud Run stops giving CPU to an instance once its response is sent. `--min-instances 1` keeps
+  one warm, and 1Gi leaves room for two workers rendering PDFs.
+- **`--allow-unauthenticated`**: the browser and the detector call the API directly; Django checks the
+  link token and the webhook bearer.
+- **`GCS_CREDENTIALS_JSON` is still needed.** Cloud Run's default credentials hold no private key, so they
+  cannot sign the evidence links.
+- **Retries**: create a Cloud Run job from the same image running `python manage.py send_pending_alerts`
+  and trigger it from Cloud Scheduler (every 15 minutes, say). With more than one instance, run
+  migrations the same way (a job running `python manage.py migrate`) and set `RUN_MIGRATIONS=0` on the service.
+- **Domain**: `gcloud beta run domain-mappings create --service condorin-api --domain api.condorin.pe --region $REGION`,
+  then add the DNS records it prints. Not every region supports domain mappings.
+- **Vercel**: the frontend calls `https://api.condorin.pe` (or the `run.app` URL until the domain is live).
+  To allow preview deployments, set `CORS_ALLOWED_ORIGIN_REGEXES` to something like
+  `^https://condorin-[a-z0-9-]+\.vercel\.app$`. Lists containing commas need gcloud's custom delimiter,
+  e.g. `--set-env-vars "^;^ADDITIONAL_CORS_ORIGINS=a,b;DOMAIN=api.condorin.pe"`.

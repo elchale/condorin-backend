@@ -1,0 +1,54 @@
+"""External services: the detector webhook, WhatsApp Cloud API, Google Cloud Storage and email.
+
+WhatsApp alerts go out on a background thread right after
+the webhook commits, and `manage.py send_pending_alerts` retries whatever failed.
+"""
+from .env import env
+
+# Detector webhook (POST /api/v1/detections). Either credential is accepted:
+# a Google ID token minted for DETECTIONS_OIDC_AUDIENCE by one of the allowed service accounts,
+# or the shared secret. Leave a side empty to turn it off.
+DETECTIONS_SHARED_SECRET = env('DETECTIONS_SHARED_SECRET', default='')
+DETECTIONS_OIDC_AUDIENCE = env('DETECTIONS_OIDC_AUDIENCE', default='https://api.condorin.pe/api/v1/detections')
+DETECTIONS_ALLOWED_SERVICE_ACCOUNTS = env.list('DETECTIONS_ALLOWED_SERVICE_ACCOUNTS', default=[])
+# Detections below this confidence are stored but do not alert anyone.
+ALERT_MIN_CONFIDENCE = env.float('ALERT_MIN_CONFIDENCE', default=0.5)
+
+# WhatsApp Cloud API, Qolca Solutions WABA (same number as the condorin.pe sign in).
+WA_GRAPH_URL = env('WA_GRAPH_URL', default='https://graph.facebook.com/v23.0')
+WA_TOKEN = env('WA_TOKEN', default='')
+WA_PHONE_NUMBER_ID = env('WA_PHONE_NUMBER_ID', default='')
+WA_WABA_ID = env('WA_WABA_ID', default='')
+# UTILITY template with an image header and two URL buttons (see `manage.py create_alert_template`).
+WA_ALERT_TEMPLATE = env('WA_ALERT_TEMPLATE', default='condorin_alerta')
+# Approved AUTHENTICATION template used to confirm the person before an expediente is sent.
+WA_CODE_TEMPLATE = env('WA_CODE_TEMPLATE', default='condorin_codigo')
+WA_TEMPLATE_LANG = env('WA_TEMPLATE_LANG', default='es')
+# Header image when the crop cannot be signed (the WhatsApp preview image of condorin.pe).
+WA_ALERT_FALLBACK_IMAGE = env('WA_ALERT_FALLBACK_IMAGE', default='https://www.condorin.pe/opengraph-image.jpg')
+# When False, messages are logged instead of sent (local dev and tests).
+WA_SEND_ENABLED = env.bool('WA_SEND_ENABLED', default=bool(WA_TOKEN))
+
+# Google Cloud Storage: read access to the detector buckets, to pin evidence and sign links.
+# GCS_CREDENTIALS_JSON is the base64 service account JSON (it must hold a private key to sign URLs).
+# Without it, Application Default Credentials are used.
+GCS_CREDENTIALS_JSON = env('GCS_CREDENTIALS_JSON', default='')
+GCS_PROJECT_ID = env('GCS_PROJECT_ID', default='')
+# Lifetime of the evidence links the frontend shows and the WhatsApp header image.
+GCS_SIGNED_URL_MINUTES = env.int('GCS_SIGNED_URL_MINUTES', default=60)
+
+# Send alerts in the request thread instead of a background thread (tests, one off scripts).
+ALERTS_INLINE = env.bool('ALERTS_INLINE', default=False)
+
+# Personal expediente links sent by WhatsApp stay valid this long.
+ALERT_LINK_DAYS = env.int('ALERT_LINK_DAYS', default=60)
+
+# Email: the finished expediente is sent to the chosen authorities with the ONG member in copy.
+EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = env('EMAIL_HOST', default='smtp.sendgrid.net')
+EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='apikey')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+EMAIL_TIMEOUT = env.int('EMAIL_TIMEOUT', default=15)
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Condorin <info@qolca.org>')

@@ -1,0 +1,159 @@
+"""Store a webhook delivery, then alert every member of the ONGs that watch that river.
+
+Delivery is at least once on the detector side, so storing is idempotent on the
+Idempotency-Key and every alert row is unique per (image, member): a retry never
+messages anyone twice.
+"""
+import hashlib
+import logging
+import threading
+
+from django.conf import settings
+from django.db import IntegrityError, close_old_connections, transaction
+from django.utils import timezone
+
+from core import gcs, whatsapp
+from ongs.models import Member, River
+
+from .models import Alert, Detection, SatelliteImage
+from .text import alert_template_components
+
+logger = logging.getLogger(__name__)
+
+MAX_ATTEMPTS = 5
+
+
+def idempotency_key(header_value: str, image: dict) -> str:
+    return (header_value or f"{image['bucket']}/{image['object']}#{image['generation']}")[:512]
+
+
+@transaction.atomic
+def ingest(data: dict, key: str, raw: dict) -> tuple[SatelliteImage, bool]:
+    """Stores the validated `data` (and the `raw` body as received). Returns (image, created).
+
+    A repeated key returns the stored image untouched.
+    """
+    existing = SatelliteImage.objects.filter(idempotency_key=key).first()
+    if existing:
+        return existing, False
+
+    img = data['image']
+    river, _ = River.objects.get_or_create(slug=img['river'], defaults={'name': img['river'].replace('-', ' ').title()})
+    try:
+        with transaction.atomic():
+            image = SatelliteImage.objects.create(
+                idempotency_key=key,
+                river=river,
+                bucket=img['bucket'],
+                object_name=img['object'],
+                generation=img['generation'],
+                satellite=img['satellite'],
+                captured_at=img['captured_at'],
+                model_name=data['model']['name'],
+                model_version=data['model']['version'],
+                payload=raw,
+            )
+    except IntegrityError:
+        # A concurrent delivery of the same key won the race.
+        return SatelliteImage.objects.get(idempotency_key=key), False
+
+    Detection.objects.bulk_create([
+        Detection(image=image, index=i, lat=d['lat'], lon=d['lon'], confidence=d['confidence'],
+                  bbox=d['bbox'], crop_uri=d.get('crop_uri', ''))
+        for i, d in enumerate(data['detections'])
+    ])
+
+    if image.alerting_detections().exists():
+        members = Member.objects.filter(active=True, ong__active=True, ong__rivers=river).distinct()
+        Alert.objects.bulk_create([Alert(image=image, member=m) for m in members])
+        if not members:
+            logger.warning('detections: river %s has no ONG members, nobody was alerted', river.slug)
+
+    transaction.on_commit(lambda: dispatch(image.pk))
+    return image, True
+
+
+def dispatch(image_id: int) -> None:
+    """Runs after the webhook responds, on a thread, or inline when ALERTS_INLINE."""
+    if getattr(settings, 'ALERTS_INLINE', False):
+        process_image(image_id)
+        return
+    threading.Thread(target=_run_in_thread, args=(image_id,), daemon=True, name=f'alerts-{image_id}').start()
+
+
+def _run_in_thread(image_id: int) -> None:
+    try:
+        process_image(image_id)
+    except Exception:
+        logger.exception('detections: alert dispatch crashed for image %s', image_id)
+    finally:
+        close_old_connections()
+
+
+def process_image(image_id: int) -> None:
+    image = SatelliteImage.objects.select_related('river').get(pk=image_id)
+    pin_evidence(image)
+    for alert in image.alerts.filter(status__in=[Alert.Status.PENDING, Alert.Status.FAILED],
+                                     attempts__lt=MAX_ATTEMPTS).select_related('member'):
+        send_alert(alert)
+
+
+def pin_evidence(image: SatelliteImage) -> None:
+    """Record GCS's own hashes for the scene and the SHA-256 of each crop, so the evidence is fixed."""
+    if not image.md5_hash:
+        try:
+            meta = gcs.object_metadata(image.bucket, image.object_name, image.generation)
+            image.md5_hash, image.crc32c, image.size_bytes = meta['md5_hash'], meta['crc32c'], meta['size_bytes']
+            image.save(update_fields=['md5_hash', 'crc32c', 'size_bytes', 'updated'])
+        except gcs.StorageUnavailable as exc:
+            logger.warning('detections: could not read scene metadata for %s: %s', image.gs_uri, exc)
+
+    for det in image.detections.filter(crop_sha256='').exclude(crop_uri=''):
+        try:
+            bucket, name, generation = gcs.parse_gs_uri(det.crop_uri)
+            content, read_generation = gcs.download(bucket, name, generation)
+        except (ValueError, gcs.StorageUnavailable) as exc:
+            logger.warning('detections: could not read crop %s: %s', det.crop_uri, exc)
+            continue
+        det.crop_sha256 = hashlib.sha256(content).hexdigest()
+        det.crop_generation = read_generation
+        det.save(update_fields=['crop_sha256', 'crop_generation', 'updated'])
+
+
+def header_image_url(image: SatelliteImage) -> str:
+    """Signed link to the crop of the strongest detection; the brand image when there is none."""
+    best = image.alerting_detections().exclude(crop_uri='').order_by('-confidence').first()
+    if best:
+        try:
+            bucket, name, generation = gcs.parse_gs_uri(best.crop_uri)
+            url = gcs.signed_url(bucket, name, best.crop_generation or generation, minutes=24 * 60)
+            if url:
+                return url
+        except ValueError:
+            pass
+    return settings.WA_ALERT_FALLBACK_IMAGE
+
+
+def send_alert(alert: Alert) -> None:
+    image = alert.image
+    best = image.alerting_detections().order_by('-confidence').first()
+    if best is None:
+        return
+
+    components = alert_template_components(
+        member=alert.member,
+        image=image,
+        count=image.alerting_detections().count(),
+        header_url=header_image_url(image),
+        token=alert.token,
+        lat=best.lat,
+        lon=best.lon,
+    )
+    alert.attempts += 1
+    try:
+        alert.wa_message_id = whatsapp.send_template(alert.member.phone, settings.WA_ALERT_TEMPLATE, components)
+    except whatsapp.WhatsAppError as exc:
+        alert.status, alert.error = Alert.Status.FAILED, str(exc)[:2000]
+    else:
+        alert.status, alert.error, alert.sent_at = Alert.Status.SENT, '', timezone.now()
+    alert.save(update_fields=['attempts', 'wa_message_id', 'status', 'error', 'sent_at', 'updated'])

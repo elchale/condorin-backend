@@ -1,0 +1,188 @@
+import json
+from datetime import timedelta
+
+import pytest
+from django.core import mail
+from django.utils import timezone
+
+from detections.models import Alert
+from expedientes import codes
+from expedientes.models import Expediente
+from ongs.models import Member, Ong
+
+pytestmark = pytest.mark.django_db
+
+COMPLETE = {
+    'ong_address': 'Jr. Próspero 123, Iquitos',
+    'notify_email': 'denuncias@amazoniaviva.org',
+    'rep_dni': '12345678',
+    'rep_position': 'Presidenta',
+    'truth_declared': True,
+}
+
+
+@pytest.fixture
+def alerts(post_detection, payload, ong, sent):
+    post_detection(payload)
+    return {a.member.phone: a for a in Alert.objects.select_related('member')}
+
+
+@pytest.fixture
+def maria(alerts):
+    return alerts['51936282808']
+
+
+@pytest.fixture
+def fixed_code(monkeypatch):
+    monkeypatch.setattr(codes.secrets, 'randbelow', lambda n: 123456)
+    return '123456'
+
+
+def url(alert, suffix=''):
+    return f'/api/v1/expedientes/{alert.token}{suffix}'
+
+
+def patch(client, alert, data):
+    return client.patch(url(alert), json.dumps(data), content_type='application/json')
+
+
+def send(client, alert, data=None):
+    return client.post(url(alert, '/enviar'), data or {}, content_type='application/json')
+
+
+def finalize(client, alert, code):
+    patch(client, alert, COMPLETE)
+    send(client, alert)
+    return send(client, alert, {'code': code})
+
+
+def test_unknown_token(client, db):
+    assert client.get('/api/v1/expedientes/nope').status_code == 404
+
+
+def test_expired_link(client, maria):
+    Alert.objects.filter(pk=maria.pk).update(expires_at=timezone.now() - timedelta(minutes=1))
+    resp = client.get(url(maria))
+    assert resp.status_code == 410
+    assert resp.json()['type'] == 'link_expired'
+
+
+def test_first_tap_creates_a_prefilled_expediente(client, maria):
+    data = client.get(url(maria)).json()
+
+    exp = data['expediente']
+    assert exp['status'] == 'draft'
+    assert exp['ong_name'] == 'Asociación Amazonía Viva' and exp['ong_ruc'] == '20123456789'
+    assert exp['rep_name'] == 'María Huamán Ríos'
+    assert 'del río Yaguas' in exp['facts'] and 'Parque Nacional Yaguas' in exp['facts']
+    assert exp['notify_email'] == 'maria@example.org'
+    assert set(exp['missing']) == {'ong_address', 'rep_dni', 'truth_declared'}
+    assert data['incident']['detections'][0]['utm'] == '19S 283090 E 9693584 N'
+    assert {a['code'] for a in data['authorities'] if a['selected']} == {'fema', 'oefa', 'sernanp'}
+    assert Alert.objects.get(pk=maria.pk).opened_at is not None
+
+
+def test_members_of_the_same_ong_share_one_expediente(client, alerts):
+    first = client.get(url(alerts['51936282808'])).json()['expediente']['id']
+    second = client.get(url(alerts['51999888777'])).json()['expediente']['id']
+    assert first == second
+
+
+def test_each_ong_gets_its_own_expediente(client, post_detection, payload, ong, river, sent):
+    other = Ong.objects.create(name='Otra ONG')
+    other.rivers.add(river)
+    Member.objects.create(ong=other, full_name='Ana Soto', phone='51911222333')
+    post_detection(payload)
+    ids = {client.get(url(a)).json()['expediente']['id'] for a in Alert.objects.all()}
+    assert len(ids) == 2
+
+
+def test_autosave_remembers_the_answers_for_next_time(client, maria):
+    resp = patch(client, maria, {'rep_dni': '12345678', 'ong_address': 'Jr. Próspero 123, Iquitos'})
+    assert resp.status_code == 200
+    assert Member.objects.get(pk=maria.member_id).dni == '12345678'
+    assert Ong.objects.get(pk=maria.member.ong_id).address == 'Jr. Próspero 123, Iquitos'
+
+
+def test_invalid_dni(client, maria):
+    resp = patch(client, maria, {'rep_dni': '123'})
+    assert resp.status_code == 400
+    assert 'rep_dni' in resp.json()['field_errors']
+
+
+def test_cannot_send_an_incomplete_expediente(client, maria, sent):
+    resp = send(client, maria)
+    assert resp.status_code == 400
+    assert 'rep_dni' in resp.json()['field_errors']
+    assert not any(template == 'condorin_codigo' for _, template, _ in sent)
+
+
+def test_whatsapp_code_confirms_and_emails_the_final_pdf(client, maria, sent, fixed_code):
+    patch(client, maria, COMPLETE)
+
+    resp = send(client, maria)
+    assert resp.status_code == 202
+    assert resp.json()['phone_hint'] == '+51 *** *** 808'
+    assert sent[-1][:2] == ('51936282808', 'condorin_codigo')
+
+    wrong = send(client, maria, {'code': '000000'})
+    assert wrong.status_code == 400 and wrong.json()['type'] == 'code_invalid'
+
+    ok = send(client, maria, {'code': fixed_code})
+    assert ok.status_code == 200
+    exp = ok.json()['expediente']
+    assert exp['status'] == 'ready' and exp['folio'].startswith('CND-2026-')
+    assert ok.json()['sent']['emailed_to'] == ['denuncias@amazoniaviva.org', 'maria@example.org']
+    assert mail.outbox[0].attachments[0][0] == f"{exp['folio']}.pdf"
+
+    pdf = client.get(url(maria) + '?formato=pdf')
+    assert pdf['Content-Type'] == 'application/pdf'
+    assert pdf.content.startswith(b'%PDF')
+
+
+def test_code_from_one_member_does_not_work_for_another(client, alerts, fixed_code):
+    maria, jose = alerts['51936282808'], alerts['51999888777']
+    patch(client, maria, COMPLETE)
+    send(client, maria)
+    assert send(client, jose, {'code': fixed_code}).json()['type'] == 'code_expired'
+
+
+def test_too_many_wrong_codes(client, maria, fixed_code):
+    patch(client, maria, COMPLETE)
+    send(client, maria)
+    for _ in range(codes.MAX_ATTEMPTS):
+        send(client, maria, {'code': '000000'})
+    assert send(client, maria, {'code': fixed_code}).json()['type'] == 'code_expired'
+
+
+def test_draft_pdf_preview(client, maria):
+    resp = client.get(url(maria) + '?formato=pdf')
+    assert resp.status_code == 200
+    assert resp.content.startswith(b'%PDF')
+    assert 'borrador' in resp['Content-Disposition']
+
+
+def test_filing_receipt_locks_the_expediente(client, maria, fixed_code):
+    patch(client, maria, COMPLETE)
+    early = patch(client, maria, {'filings': [{'authority': 'fema', 'receipt_number': 'X', 'filed_at': '2026-10-18'}]})
+    assert early.status_code == 400
+
+    finalize(client, maria, fixed_code)
+    resp = patch(client, maria, {'filings': [
+        {'authority': 'fema', 'receipt_number': 'MP-2026-000123', 'filed_at': '2026-10-18'},
+    ]})
+    assert resp.json()['expediente']['status'] == 'filed'
+    fema = next(a for a in resp.json()['authorities'] if a['code'] == 'fema')
+    assert fema['filing']['receipt_number'] == 'MP-2026-000123'
+
+    assert patch(client, maria, {'facts': 'otra cosa'}).status_code == 409
+    assert Expediente.objects.get().facts != 'otra cosa'
+
+
+def test_ready_expediente_can_be_reopened_to_fix_it(client, maria, fixed_code):
+    finalize(client, maria, fixed_code)
+
+    assert patch(client, maria, {'rep_position': 'Directora'}).status_code == 409
+    resp = patch(client, maria, {'reopen': True, 'rep_position': 'Directora'})
+    assert resp.status_code == 200
+    assert resp.json()['expediente']['status'] == 'draft'

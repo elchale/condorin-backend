@@ -62,6 +62,7 @@ five for the browser sign in (map and static SPA), and the pages.
 | POST | `/api/v1/panel/enlace` | condorin.pe server | `{"token"}` → the member a WhatsApp alert link may sign in (sent, under `LINK_SIGN_IN_DAYS`), else 404. |
 | GET | `/api/v1/panel/actividad?limit=N` | condorin.pe server | Secret only, no phone. The admin live feed: the last N scenes received (default 20, max 50), newest first, each with its detections, the ONGs that watch the river, their alerts and expediente, and the 8 decision steps (contract in `condorin/src/lib/admin/activity.ts`). |
 | GET | `/api/v1/mapa` | anyone | The public map (contract A in `hacktheandes/mapa-data/CONTRACT.md`): totals (with `alerts_opened` and `users` as usage counters), rivers, scenes, detections as GeoJSON, a monthly timeline and an anonymized activity feed. No names, phones, tokens or signed URLs. With a valid `Authorization: Bearer <session>` it adds `mine` and turns private. `manage.py export_mapa` prints the same JSON. |
+| GET | `/api/v1/fuentes` | anyone | Live open data for the map (contract D): NASA FIRMS VIIRS fires in the Peruvian Amazon (7 days, max 5,000), Sentinel 1 and 2 passes per river from the Copernicus catalogue (last, count, next estimate, cloud), Open-Meteo rain and temperature per river, and Global Forest Watch tile layers. Served from the `FeedCache` table; stale sources refresh on a background thread. Any origin, gzip, 5 min cache. |
 | POST | `/api/v1/auth/codigo` | map SPA | `{"phone", "consent": true}` → 202 `{"phone", "pending"}`. Sends `condorin_codigo` by WhatsApp. One code per phone every 45 s, 10 per IP per hour. |
 | POST | `/api/v1/auth/entrar` | map SPA | `{"pending", "code"}` → `{"token", "member", "ong"}`. 5 attempts per code. Records the sign in on `accounts_member` and joins the default ONG, like condorin.pe. |
 | POST | `/api/v1/auth/enlace` | SPA | `{"token": <alert token>}` → the same as `/auth/entrar` with `"via": "link"` and a 7 day session. Same rules and same 404 as `/api/v1/panel/enlace`. |
@@ -130,6 +131,7 @@ python manage.py simulate_detection --river yaguas   # runs the real pipeline, p
 python manage.py send_pending_alerts                 # retries alerts that failed (cron or by hand)
 python manage.py create_alert_template               # prints the WhatsApp template; --submit sends it to Meta
 python -X utf8 manage.py export_mapa > ../mapa-data/mapa-snapshot.json   # offline snapshot of GET /api/v1/mapa
+python -X utf8 manage.py refresh_fuentes   # fetch the open data feeds now (--source firms, --force); writes only FeedCache
 python scripts/latency.py https://api.condorin.pe /healthz/ /api/v1/mapa --n 20   # p50, p95 and gzip bytes
 pytest
 ruff check .

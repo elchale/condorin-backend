@@ -5,7 +5,7 @@ runs before it for the one public route. GET responses get their headers from th
 """
 from django.http import HttpResponse
 
-PUBLIC_PATHS = frozenset({'/api/v1/mapa'})
+PUBLIC_PATHS = frozenset({'/api/v1/mapa', '/api/v1/fuentes'})
 
 
 def cors(response: HttpResponse) -> HttpResponse:

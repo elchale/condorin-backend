@@ -5,6 +5,7 @@ from accounts.views import CodeView, EnterView, LinkEnterView, MeExpedienteView,
 from core.views import healthz, landing
 from detections.views import DetectionWebhookView
 from expedientes.views import EventoView, ExpedienteSendView, ExpedienteView
+from fuentes.views import FuentesView
 from mapa.views import MapaView
 from panel.views import ActivityView, LinkSignInView, PanelExpedienteView, PanelView
 
@@ -33,6 +34,7 @@ urlpatterns = [
 
     # Public map (any origin, cacheable) and the SPA sign in with a WhatsApp code and a Bearer session.
     path('api/v1/mapa', MapaView.as_view(), name='mapa'),
+    path('api/v1/fuentes', FuentesView.as_view(), name='fuentes'),
     path('api/v1/auth/codigo', CodeView.as_view(), name='auth-code'),
     path('api/v1/auth/entrar', EnterView.as_view(), name='auth-enter'),
     path('api/v1/auth/enlace', LinkEnterView.as_view(), name='auth-link'),

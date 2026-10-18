@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'expedientes',
     'panel',
     'mapa',
+    'fuentes',
 ]
 
 MIDDLEWARE = [
@@ -151,6 +152,7 @@ REST_FRAMEWORK = {
         'panel': '600/minute',
         'panel_link': '60/minute',
         'mapa': '600/minute',
+        'fuentes': '600/minute',
         'auth_code': '10/hour',
         'auth_enter': '30/hour',
         'me': '300/minute',
@@ -175,6 +177,8 @@ if not DEBUG:
 
 # How long the anonymous GET /api/v1/mapa payload stays in the process cache.
 MAPA_CACHE_SECONDS = env.int('MAPA_CACHE_SECONDS', default=30)
+# How long the encoded GET /api/v1/fuentes body stays in the process cache (the feeds refresh in the background).
+FUENTES_CACHE_SECONDS = env.int('FUENTES_CACHE_SECONDS', default=60)
 
 LOGGING = {
     'version': 1,

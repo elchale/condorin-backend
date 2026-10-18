@@ -62,29 +62,33 @@ def _incident(image, detections, expediente) -> dict:
     }
 
 
+def panel_payload(member, joined: bool) -> dict:
+    """What the panel shows a member: shared by GET /api/v1/panel and the SPA's GET /api/v1/me."""
+    ong = member.ong
+    rows = [_incident(*row) for row in incidents(ong)]
+    statuses = [r['expediente']['status'] if r['expediente'] else 'none' for r in rows]
+    return {
+        'member': {'name': member.full_name, 'phone': member.phone, 'joined_now': joined},
+        'ong': {
+            'name': ong.display_name,
+            'rivers': [{'slug': r.slug, 'name': r.name, 'protected_area': r.protected_area}
+                       for r in ong.rivers.all()],
+            'members': ong.members.filter(active=True).count(),
+        },
+        'totals': {
+            'incidents': len(rows),
+            'without_expediente': statuses.count('none'),
+            'draft': statuses.count('draft'),
+            'ready': statuses.count('ready'),
+            'filed': statuses.count('filed'),
+        },
+        'incidents': rows,
+    }
+
+
 class PanelView(FrontendView):
     def get(self, request):
-        member, joined = member_for_phone(member_phone(request))
-        ong = member.ong
-        rows = [_incident(*row) for row in incidents(ong)]
-        statuses = [r['expediente']['status'] if r['expediente'] else 'none' for r in rows]
-        return Response({
-            'member': {'name': member.full_name, 'phone': member.phone, 'joined_now': joined},
-            'ong': {
-                'name': ong.display_name,
-                'rivers': [{'slug': r.slug, 'name': r.name, 'protected_area': r.protected_area}
-                           for r in ong.rivers.all()],
-                'members': ong.members.filter(active=True).count(),
-            },
-            'totals': {
-                'incidents': len(rows),
-                'without_expediente': statuses.count('none'),
-                'draft': statuses.count('draft'),
-                'ready': statuses.count('ready'),
-                'filed': statuses.count('filed'),
-            },
-            'incidents': rows,
-        })
+        return Response(panel_payload(*member_for_phone(member_phone(request))))
 
 
 class PanelExpedienteView(FrontendView):

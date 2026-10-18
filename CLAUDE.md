@@ -9,6 +9,8 @@ Ojo de Cóndor API (api.condorin.pe). Read README.md first. It has the flow, the
 - `detections/`: the webhook (`views.py`, `auth.py`, `serializers.py`), `services.py` (ingest, pin evidence, send alerts), and `text.py` (the WhatsApp template wording and definition).
 - `expedientes/`: `Authority`, `Expediente`, `Filing`; `services.py` (open, update, finalize, archive the PDF in GCS), `drafting.py` (the hechos text), `pdf.py`, `codes.py` (the WhatsApp code), `mailer.py`.
 - `panel/`: routes only the condorin.pe server calls (shared `PANEL_API_SECRET`): the ONG panel, opening an expediente from it, and the WhatsApp link sign in.
+- `mapa/`: the public map `GET /api/v1/mapa` (`builder.py` builds it in about eight queries, `export_mapa` prints it, `middleware.py` answers its CORS preflight for any origin).
+- `accounts/`: the tables condorin.pe uses, plus the map SPA sign in (`session.py` signs the pending code and the Bearer session, `views.py` has `/auth/codigo`, `/auth/entrar`, `/me`).
 
 ## Rules
 - Keep the API small. The panel routes serve the member panel on condorin.pe; the time replay dashboard still has no endpoints.

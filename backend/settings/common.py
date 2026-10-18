@@ -49,12 +49,17 @@ INSTALLED_APPS = [
     'detections',
     'expedientes',
     'panel',
+    'mapa',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Cloud Run does not compress: gzip every response above 200 bytes when the client accepts it.
+    'django.middleware.gzip.GZipMiddleware',
     'core.middleware.RequestIdMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    # GET /api/v1/mapa is public: its preflight is answered for any origin before corsheaders sees it.
+    'mapa.middleware.PublicCorsMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -86,7 +91,15 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Neon Postgres, shared with the Next.js app. Django owns every migration.
 DATABASES = {'default': env.db_url('DATABASE_URL')}
-DATABASES['default']['CONN_MAX_AGE'] = env.int('DB_CONN_MAX_AGE', default=60)
+# Persistent connections: the TLS handshake to Neon costs more than most queries. Health checks drop a
+# connection Neon closed (compute suspended) before it is reused.
+DATABASES['default']['CONN_MAX_AGE'] = env.int('DB_CONN_MAX_AGE', default=600)
+DATABASES['default']['CONN_HEALTH_CHECKS'] = True
+# Fail fast instead of hanging when Neon is unreachable (libpq waits without limit by default), so the
+# migrate at container start or a request errors out in seconds and the logs say why.
+if 'postgresql' in DATABASES['default']['ENGINE']:
+    DATABASES['default'].setdefault('OPTIONS', {}).setdefault(
+        'connect_timeout', env.int('DB_CONNECT_TIMEOUT', default=10))
 # Neon's pooler (PgBouncer) does not support server side cursors.
 DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 # pytest creates and drops its own database on the same server, never touching this one.
@@ -118,6 +131,9 @@ CORS_ALLOWED_ORIGINS = [FRONTEND_URL, 'https://www.condorin.pe'] + [
 ]
 # Origins that change per deploy, as regexes (e.g. Vercel previews: ^https://condorin-[a-z0-9-]+\.vercel\.app$).
 CORS_ALLOWED_ORIGIN_REGEXES = env.list('CORS_ALLOWED_ORIGIN_REGEXES', default=[])
+if DEBUG:
+    # Local frontends: the Vite map (5173) and Next (3000). GET /api/v1/mapa allows any origin by itself.
+    CORS_ALLOWED_ORIGINS += ['http://localhost:5173', 'http://localhost:3000']
 CORS_EXPOSE_HEADERS = ['x-request-id']
 
 REST_FRAMEWORK = {
@@ -132,6 +148,10 @@ REST_FRAMEWORK = {
         'expediente_send': '30/hour',
         'panel': '600/minute',
         'panel_link': '60/minute',
+        'mapa': '600/minute',
+        'auth_code': '10/hour',
+        'auth_enter': '30/hour',
+        'me': '300/minute',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.envelope_exception_handler',
 }
@@ -150,6 +170,9 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+
+# How long the anonymous GET /api/v1/mapa payload stays in the process cache.
+MAPA_CACHE_SECONDS = env.int('MAPA_CACHE_SECONDS', default=30)
 
 LOGGING = {
     'version': 1,

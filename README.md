@@ -48,7 +48,8 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
 
 ## API
 
-Ten routes in total: three for the expediente, four for the condorin.pe server, the webhook, and the pages.
+Fifteen routes: the webhook, the expediente (three plus the event page), four for the condorin.pe server, the public map,
+four for the map SPA's sign in, and the pages.
 
 | Method | Path | Who | What |
 |---|---|---|---|
@@ -60,6 +61,11 @@ Ten routes in total: three for the expediente, four for the condorin.pe server, 
 | POST | `/api/v1/panel/incidentes/<id>/expediente` | condorin.pe server | Same headers. The member's personal expediente token for that incident, created if they had no alert. |
 | POST | `/api/v1/panel/enlace` | condorin.pe server | `{"token"}` → the member a WhatsApp alert link may sign in (sent, under `LINK_SIGN_IN_DAYS`), else 404. |
 | GET | `/api/v1/panel/actividad?limit=N` | condorin.pe server | Secret only, no phone. The admin live feed: the last N scenes received (default 20, max 50), newest first, each with its detections, the ONGs that watch the river, their alerts and expediente, and the 8 decision steps (contract in `condorin/src/lib/admin/activity.ts`). |
+| GET | `/api/v1/mapa` | anyone | The public map (contract A in `hacktheandes/mapa-data/CONTRACT.md`): totals (with `alerts_opened` and `users` as usage counters), rivers, scenes, detections as GeoJSON, a monthly timeline and an anonymized activity feed. No names, phones, tokens or signed URLs. With a valid `Authorization: Bearer <session>` it adds `mine` and turns private. `manage.py export_mapa` prints the same JSON. |
+| POST | `/api/v1/auth/codigo` | map SPA | `{"phone", "consent": true}` → 202 `{"phone", "pending"}`. Sends `condorin_codigo` by WhatsApp. One code per phone every 45 s, 10 per IP per hour. |
+| POST | `/api/v1/auth/entrar` | map SPA | `{"pending", "code"}` → `{"token", "member", "ong"}`. 5 attempts per code. Records the sign in on `accounts_member` and joins the default ONG, like condorin.pe. |
+| GET | `/api/v1/me` | map SPA | `Authorization: Bearer <token>`. Exactly the `/api/v1/panel` payload. |
+| POST | `/api/v1/me/incidentes/<id>/expediente` | map SPA | Same bearer. `{"token"}` like the panel route. |
 | GET | `/` and `/healthz/` | anyone | Landing page with the logo; liveness probe. |
 | | `/admin/` | staff | ONGs, members, rivers, authorities, detections, alerts, expedientes. |
 
@@ -70,6 +76,20 @@ should handle: `link_expired` (410), `code_invalid`, `code_expired`, `code_too_s
 
 The frontend is connected: condorin.pe/expediente/<token> calls these routes through its own `/api/expedientes` proxy,
 and condorin.pe/panel uses the panel routes. The screens are in [`docs/EXPEDIENTE_UX.md`](docs/EXPEDIENTE_UX.md).
+
+### The public map and the SPA session
+
+- **CORS.** `/api/v1/mapa` answers any origin (`Access-Control-Allow-Origin: *`, preflight included, see `mapa/middleware.py`).
+  Every other route only allows condorin.pe, `ADDITIONAL_CORS_ORIGINS` and, with `DEBUG`, `http://localhost:5173` and `:3000`.
+- **Cache.** The anonymous map is `Cache-Control: public, max-age=60, stale-while-revalidate=600` with an ETag (a 304 on
+  revalidation) and is kept `MAPA_CACHE_SECONDS` (30) in the process cache, so a burst costs one set of about eight queries.
+  Nothing else is publicly cacheable; expediente routes keep their private headers.
+- **Gzip.** `GZipMiddleware` compresses every response above 200 bytes when the client accepts it (Cloud Run does not).
+- **Session.** `pending` and the session token are `django.core.signing.TimestampSigner` values (salts `otp-pending`, `session`).
+  The pending value carries an HMAC of the code keyed with `DJANGO_SECRET_KEY`, never the code; it lasts 10 minutes and the
+  session 30 days. Attempts and the 45 s resend lock live in Django's cache (LocMem): exact on one instance, per instance
+  behind several until `CACHES` points at a shared backend. Error types: `code_invalid`, `code_expired`, `code_too_soon` (429),
+  `session_invalid` (401).
 
 ### Signing in from the WhatsApp link
 
@@ -105,6 +125,8 @@ number). Then:
 python manage.py simulate_detection --river yaguas   # runs the real pipeline, prints each member's link
 python manage.py send_pending_alerts                 # retries alerts that failed (cron or by hand)
 python manage.py create_alert_template               # prints the WhatsApp template; --submit sends it to Meta
+python -X utf8 manage.py export_mapa > ../mapa-data/mapa-snapshot.json   # offline snapshot of GET /api/v1/mapa
+python scripts/latency.py https://api.condorin.pe /healthz/ /api/v1/mapa --n 20   # p50, p95 and gzip bytes
 pytest
 ruff check .
 ```
@@ -146,7 +168,8 @@ threads. The health check is `/healthz/`.
 ### Cloud Run
 
 The `Dockerfile` builds the image (`.dockerignore` keeps `.env` out of it), the entrypoint migrates
-unless `RUN_MIGRATIONS=0`, and gunicorn listens on the `$PORT` Cloud Run injects.
+unless `RUN_MIGRATIONS=0` (bounded by `MIGRATE_TIMEOUT`, 120 s, and every database connect by `DB_CONNECT_TIMEOUT`, 10 s,
+so an unreachable database fails the revision fast instead of hanging the deploy), and gunicorn listens on the `$PORT` Cloud Run injects.
 
 ```bash
 REGION=us-central1

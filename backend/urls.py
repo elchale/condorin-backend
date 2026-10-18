@@ -1,9 +1,11 @@
 from django.contrib import admin
 from django.urls import path
 
+from accounts.views import CodeView, EnterView, MeExpedienteView, MeView
 from core.views import healthz, landing
 from detections.views import DetectionWebhookView
 from expedientes.views import EventoView, ExpedienteSendView, ExpedienteView
+from mapa.views import MapaView
 from panel.views import ActivityView, LinkSignInView, PanelExpedienteView, PanelView
 
 admin.site.site_header = 'Ojo de Cóndor'
@@ -28,4 +30,11 @@ urlpatterns = [
     path('api/v1/panel/incidentes/<int:image_id>/expediente', PanelExpedienteView.as_view(), name='panel-expediente'),
     path('api/v1/panel/enlace', LinkSignInView.as_view(), name='panel-link'),
     path('api/v1/panel/actividad', ActivityView.as_view(), name='panel-activity'),
+
+    # Public map (any origin, cacheable) and the SPA sign in with a WhatsApp code and a Bearer session.
+    path('api/v1/mapa', MapaView.as_view(), name='mapa'),
+    path('api/v1/auth/codigo', CodeView.as_view(), name='auth-code'),
+    path('api/v1/auth/entrar', EnterView.as_view(), name='auth-enter'),
+    path('api/v1/me', MeView.as_view(), name='me'),
+    path('api/v1/me/incidentes/<int:image_id>/expediente', MeExpedienteView.as_view(), name='me-expediente'),
 ]

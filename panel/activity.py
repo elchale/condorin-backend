@@ -5,8 +5,8 @@ frontend only shows and animates them.
 """
 from django.conf import settings
 from django.db.models import Count, Prefetch, Q
-from django.utils import timezone
 
+from core import clock
 from core.geo import coord
 from detections.models import Alert, SatelliteImage
 from detections.text import fecha_larga
@@ -15,7 +15,7 @@ from expedientes.models import Authority, Expediente
 from expedientes.services import default_authorities, missing_fields
 from ongs.models import Ong
 
-from .services import crop_url
+from .services import crop_url, status_label
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 50
@@ -54,7 +54,7 @@ def activity_feed(limit: int = DEFAULT_LIMIT) -> dict:
         active_members=Count('members', filter=Q(members__active=True)),
     ).order_by('pk')
     images = (
-        SatelliteImage.objects.select_related('river')
+        clock.visible(SatelliteImage.objects).select_related('river')
         .prefetch_related(
             'detections',
             Prefetch('river__ongs', queryset=watching, to_attr='watching'),
@@ -70,7 +70,7 @@ def activity_feed(limit: int = DEFAULT_LIMIT) -> dict:
         if image.river_id not in suggested:
             suggested[image.river_id] = [a.name for a in default_authorities(image.river)]
         events.append(_event(image, threshold, suggested[image.river_id]))
-    return {'generated_at': timezone.now(), 'threshold': threshold, 'events': events}
+    return {'generated_at': clock.now(), 'clock': clock.payload(), 'threshold': threshold, 'events': events}
 
 
 def _event(image, threshold: float, authorities: list[str]) -> dict:
@@ -136,7 +136,7 @@ def _expediente(expediente) -> dict | None:
         return None
     return {
         'status': expediente.status,
-        'status_label': expediente.get_status_display(),
+        'status_label': status_label(expediente),
         'folio': expediente.folio,
         'authorities': [a.name for a in expediente.authorities.all()],
         'filings': [{'authority': f.authority.name, 'receipt_number': f.receipt_number, 'filed_at': f.filed_at}
@@ -245,10 +245,13 @@ def _opened(skip, alerts, expedientes) -> dict:
         who = first.member.full_name or 'Un miembro'
         return _step('opened', 'done', f'{who} abrió el expediente de {first.member.ong.display_name}.',
                      first.opened_at)
-    if expedientes:
-        first = min(expedientes, key=lambda e: e.created)
+    touched = [e for e in expedientes if not e.auto_created or e.updated_by_id]
+    if touched:
+        first = min(touched, key=lambda e: e.created)
         who = first.created_by.full_name if first.created_by and first.created_by.full_name else 'Un miembro'
         return _step('opened', 'done', f'{who} abrió el expediente de {first.ong.display_name}.', first.created)
+    if expedientes:
+        return _step('opened', 'pending', 'El borrador automático está listo, nadie lo abrió todavía.')
     if skip:
         return _step('opened', 'skipped', 'No se envió ninguna alerta que abrir.')
     return _step('opened', 'pending', 'Nadie tocó todavía "Crear expediente".')

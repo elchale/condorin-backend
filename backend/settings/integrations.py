@@ -67,3 +67,11 @@ LINK_SIGN_IN_DAYS = env.int('LINK_SIGN_IN_DAYS', default=7)
 # TODO: demo only. Everyone who signs in on condorin.pe joins this ONG (empty: the oldest active ONG).
 # Replace with real ONG invitations before going past the demo.
 DEFAULT_ONG_ID = env.int('DEFAULT_ONG_ID', default=0)
+
+# Redacción asistida de los hechos del expediente con Claude, vía LangChain (expedientes/redaccion.py).
+# Apagada por defecto: enciéndela con EXPEDIENTE_IA_ENABLED=True y una ANTHROPIC_API_KEY.
+EXPEDIENTE_IA_ENABLED = env.bool('EXPEDIENTE_IA_ENABLED', default=False)
+ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY', default='')
+EXPEDIENTE_IA_MODEL = env('EXPEDIENTE_IA_MODEL', default='claude-opus-5-5')
+EXPEDIENTE_IA_MAX_TOKENS = env.int('EXPEDIENTE_IA_MAX_TOKENS', default=4000)
+EXPEDIENTE_IA_TIMEOUT = env.int('EXPEDIENTE_IA_TIMEOUT', default=40)

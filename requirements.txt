@@ -20,3 +20,6 @@ requests==2.34.2
 # Expediente PDF
 reportlab==5.0.1
 pillow==13.0.0
+
+# Redacción de los hechos con Claude (expedientes/redaccion.py), detrás de EXPEDIENTE_IA_ENABLED
+langchain-anthropic==1.7.6

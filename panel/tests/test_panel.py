@@ -49,13 +49,13 @@ def test_lists_the_ong_incidents(client, scene):
     assert body['member']['name'] == 'María Huamán Ríos'
     assert body['member']['joined_now'] is False
     assert body['ong']['name'] == 'Amazonía Viva'
-    assert body['totals'] == {'incidents': 1, 'without_expediente': 1, 'draft': 0, 'ready': 0, 'filed': 0}
+    assert body['totals'] == {'incidents': 1, 'without_expediente': 0, 'draft': 1, 'ready': 0, 'filed': 0}
     incident = body['incidents'][0]
     assert incident['id'] == scene.pk
     assert incident['river']['name'] == 'Yaguas'
     assert incident['detections'] == 1
     assert incident['crops'] == []  # GCS is offline in tests
-    assert incident['expediente'] is None
+    assert incident['expediente']['status_label'] == 'Borrador listo para revisar'
 
 
 def test_new_person_joins_the_default_ong(client, scene):

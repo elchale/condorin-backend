@@ -7,19 +7,37 @@ GET   /api/v1/panel/actividad?limit=N                the admin live feed: every 
 
 Every call carries `Authorization: Bearer <PANEL_API_SECRET>`; the first two also `X-Condorin-Phone`.
 """
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core import clock
 from core.geo import coord, maps_url, utm
 from detections.text import fecha_larga
 from expedientes.drafting import place_sentence
 
 from .activity import activity_feed, parse_limit
 from .auth import authenticate_frontend, member_phone
-from .services import crop_url, incidents, member_for_phone, missing_count, open_from_panel, sign_in_by_link
+from .services import (
+    crop_url,
+    incident_totals,
+    incidents,
+    member_for_phone,
+    missing_count,
+    open_from_panel,
+    sign_in_by_link,
+    status_label,
+)
 
 # How many crops of one scene the panel card shows.
 CARD_CROPS = 4
+
+
+class IncidentPagination(PageNumberPagination):
+    """`?page=N` (and optionally `?page_size=N`, up to 50) over the panel incidents, newest first."""
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
 
 
 class FrontendView(APIView):
@@ -51,7 +69,9 @@ def _incident(image, detections, expediente) -> dict:
         'evidence_pinned': bool(image.md5_hash),
         'expediente': expediente and {
             'status': expediente.status,
-            'status_label': expediente.get_status_display(),
+            'status_label': status_label(expediente),
+            'auto_created': expediente.auto_created,
+            'reviewed': expediente.updated_by_id is not None,
             'folio': expediente.folio,
             'updated_at': expediente.updated,
             'updated_by': expediente.updated_by.full_name if expediente.updated_by else None,
@@ -62,12 +82,19 @@ def _incident(image, detections, expediente) -> dict:
     }
 
 
-def panel_payload(member, joined: bool) -> dict:
-    """What the panel shows a member: shared by GET /api/v1/panel and the SPA's GET /api/v1/me."""
+def incident_rows(rows) -> list[dict]:
+    return [_incident(*row) for row in rows]
+
+
+def panel_payload(member, joined: bool, rows=None) -> dict:
+    """What the panel shows a member: shared by GET /api/v1/panel and the SPA's GET /api/v1/me.
+
+    `rows` is one page of incidents (the SPA pages them); without it, the newest INCIDENT_LIMIT. The totals
+    always count every incident of the ONG.
+    """
     ong = member.ong
-    rows = [_incident(*row) for row in incidents(ong)]
-    statuses = [r['expediente']['status'] if r['expediente'] else 'none' for r in rows]
     return {
+        'clock': clock.payload(),
         'member': {'name': member.full_name, 'phone': member.phone, 'joined_now': joined},
         'ong': {
             'name': ong.display_name,
@@ -75,14 +102,8 @@ def panel_payload(member, joined: bool) -> dict:
                        for r in ong.rivers.all()],
             'members': ong.members.filter(active=True).count(),
         },
-        'totals': {
-            'incidents': len(rows),
-            'without_expediente': statuses.count('none'),
-            'draft': statuses.count('draft'),
-            'ready': statuses.count('ready'),
-            'filed': statuses.count('filed'),
-        },
-        'incidents': rows,
+        'totals': incident_totals(ong),
+        'incidents': incident_rows(incidents(ong) if rows is None else rows),
     }
 
 

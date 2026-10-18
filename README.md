@@ -104,6 +104,26 @@ and condorin.pe/panel uses the panel routes. The screens are in [`docs/EXPEDIENT
 - **Browser calls.** The expediente, event, PDF, `/auth/*` and `/me*` routes answer condorin.pe and www.condorin.pe
   (preflight with `Authorization` and JSON bodies); `Content-Disposition` is exposed so the SPA can name the PDF.
 
+### The clock: what day it is for the API
+
+`core/clock.py` answers "now" for everything the product reasons about in time. By default it is the real clock. With
+`manage.py set_today 2026-07-10` (or the **Reloj** row in `/admin/`) the whole API moves to that day, at the current Lima
+time of day, and keeps ticking from there (`2026-07-10T09:00` pins the start instant):
+
+- The map, the panel, the admin feed and the event history only show scenes captured up to that instant; the later
+  ones do not exist yet. `generated_at`, alert `sent_at`, `opened_at`, `finalized_at` and the date on the PDF follow it.
+- Moving the day queues an alert for every current recipient of each scene captured that day and sends them
+  (`core.clock.replay_today`). Alerts are unique per scene and member and only pending or failed ones are sent, so
+  repeating the command, or a day that already alerted for real, messages nobody twice. `--no-send` moves the day
+  quietly; `--resend` retries today's pending ones; `set_today` alone prints the state; `--real` returns to real time.
+- Every payload carries `clock`: `{"now", "today", "label", "simulated", "timezone"}`. The SPA shows it on the panel
+  (date, ticking Lima time, a "fecha simulada" tag) and uses `now` for "últimos 30 días" and "hace 5 min".
+- Security windows stay on the real clock: alert link expiry (`ALERT_LINK_DAYS`), WhatsApp codes and signed
+  sessions. The link sign in window (`LINK_SIGN_IN_DAYS` after `sent_at`) follows the clock, so a demo alert signs
+  in while the demo day is set; after `--real` those links are older than the window and no longer sign in.
+- The state is one row read through the process cache for 5 s, so a request costs at most one extra query and
+  every instance follows a change within seconds. The public map cache key includes the day.
+
 ### Signing in from the WhatsApp link
 
 The alert button opens condorin.pe/expediente/<token> and the member is signed in without a code:
@@ -138,6 +158,7 @@ number). Then:
 python manage.py simulate_detection --river yaguas   # stores a scene marked simulated: alerts nobody, needs WA_SEND_ENABLED=False
 python manage.py send_pending_alerts                 # retries alerts that failed (cron or by hand), recent scenes only
 python manage.py purge_demo_events                   # lists demo and mock scenes; --yes deletes them with alerts and expedientes
+python manage.py set_today 2026-07-10                # the API lives on that day: hides later scenes, sends that day's alerts (--real to return)
 python manage.py set_admin_phone admin@example.org 51987654321   # admin gets every recent alert (--clear to stop)
 python manage.py create_alert_template               # prints the WhatsApp template; --submit sends it to Meta
 python -X utf8 manage.py export_mapa > ../mapa-data/mapa-snapshot.json   # offline snapshot of GET /api/v1/mapa
@@ -150,6 +171,12 @@ ruff check .
 
 Without `WA_TOKEN`, WhatsApp messages are logged instead of sent. Without GCS credentials, the
 evidence still records the URIs, but the hashes and signed links stay empty.
+
+The hechos of a new expediente are written by `expedientes/drafting.py` from the detection. With
+`EXPEDIENTE_IA_ENABLED=True` and an `ANTHROPIC_API_KEY`, that draft goes once through Claude
+(`expedientes/redaccion.py`, LangChain, model `EXPEDIENTE_IA_MODEL`, default `claude-opus-5-5`) and the
+member sees the rewritten version. The flag is off by default; if the call fails, the deterministic
+draft is kept and the expediente still opens.
 
 ## Shared database
 

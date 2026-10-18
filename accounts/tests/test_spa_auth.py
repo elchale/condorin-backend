@@ -49,7 +49,7 @@ def test_happy_path(client, ong, sent):
     me = client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {entered["token"]}')
     assert me.status_code == 200
     assert me.json()['member']['name'] == 'María Huamán Ríos'
-    assert set(me.json()) == {'member', 'ong', 'totals', 'incidents'}
+    assert set(me.json()) == {'clock', 'member', 'ong', 'totals', 'incidents', 'pagination'}
 
     # The same pending value never signs in twice.
     again = post(client, '/api/v1/auth/entrar', {'pending': body['pending'], 'code': code})
@@ -139,3 +139,36 @@ def test_me_opens_an_expediente(client, ong, sent, post_detection, payload):
 ])
 def test_normalize_phone(raw, phone):
     assert session.normalize_phone(raw) == phone
+
+
+def _scenes(post_detection, payload, n):
+    for i in range(n):
+        body = json.loads(json.dumps(payload))
+        body['image']['object'] = f'yaguas/2026-10-{1 + i:02d}T1042Z_s1.tif'
+        body['image']['captured_at'] = f'2026-10-{1 + i:02d}T10:42:00Z'
+        assert post_detection(body, key=f'scene-{i}').status_code in (200, 201, 202)
+
+
+def test_me_pages_incidents_and_counts_them_all(client, ong, sent, post_detection, payload):
+    _scenes(post_detection, payload, 13)
+    bearer = {'HTTP_AUTHORIZATION': f'Bearer {session.session_token("51936282808")}'}
+
+    # An expediente on the oldest scene, which is only on page 2: the totals still count it.
+    oldest = client.get('/api/v1/me/incidentes?page=2', **bearer).json()['results'][-1]['id']
+    token = client.post(f'/api/v1/me/incidentes/{oldest}/expediente', **bearer).json()['token']
+    assert client.get(f'/api/v1/expedientes/{token}').status_code == 200
+
+    me = client.get('/api/v1/me', **bearer).json()
+    assert len(me['incidents']) == 10
+    assert me['pagination']['count'] == 13 and me['pagination']['next'] and me['pagination']['previous'] is None
+    assert me['totals'] == {'incidents': 13, 'without_expediente': 12, 'draft': 1, 'ready': 0, 'filed': 0}
+
+    more = client.get('/api/v1/me/incidentes?page=2', **bearer).json()
+    assert set(more) == {'count', 'next', 'previous', 'results'}
+    assert more['count'] == 13 and more['next'] is None and len(more['results']) == 3
+    ids = [i['id'] for i in me['incidents']] + [i['id'] for i in more['results']]
+    assert len(set(ids)) == 13
+    assert more['results'][-1]['expediente']['status'] == 'draft'
+
+    assert client.get('/api/v1/me/incidentes?page=9', **bearer).status_code == 404
+    assert client.get('/api/v1/me/incidentes').status_code == 401

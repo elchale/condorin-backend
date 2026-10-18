@@ -14,6 +14,7 @@ from django.db.models import Count, Max, Min, Q
 from django.utils import timezone
 
 from accounts.models import Member as SiteUser
+from core import clock
 from detections.models import Alert, Detection, SatelliteImage
 from expedientes.models import Expediente
 from ongs.models import Member, Ong, River
@@ -68,8 +69,10 @@ def build_mapa(member: Member | None = None, phone: str | None = None) -> dict:
     )
     river_slug = {r['id']: r['slug'] for r in rivers}
 
+    now = clock.now()
     images = list(
-        SatelliteImage.objects.order_by('-captured_at')
+        # Only what has happened by the API's clock: the demo clock hides the scenes captured after it.
+        SatelliteImage.objects.filter(captured_at__lte=now).order_by('-captured_at')
         .values('id', 'river_id', 'satellite', 'captured_at', 'model_name', 'model_version')[:MAX_IMAGES]
     )
     image_by_id = {i['id']: i for i in images}
@@ -94,7 +97,7 @@ def build_mapa(member: Member | None = None, phone: str | None = None) -> dict:
     expedientes = list(
         Expediente.objects.filter(image_id__in=image_by_id)
         .annotate(filed_at=Min('filings__created'))
-        .values('id', 'image_id', 'status', 'created', 'filed_at')
+        .values('id', 'image_id', 'status', 'created', 'updated', 'filed_at', 'auto_created', 'updated_by_id')
     )
 
     totals_counts = {
@@ -184,7 +187,8 @@ def build_mapa(member: Member | None = None, phone: str | None = None) -> dict:
     }
 
     return {
-        'generated_at': iso(timezone.now()),
+        'generated_at': iso(now),
+        'clock': clock.payload(),
         'brand': BRAND_NAME,
         'bbox': _bbox(features, river_rows),
         'totals': totals,
@@ -193,7 +197,7 @@ def build_mapa(member: Member | None = None, phone: str | None = None) -> dict:
         'detections': {'type': 'FeatureCollection', 'features': features},
         'timeline': _timeline(images, detections, image_by_id),
         'activity': _activity(images, per_image, alerts, expedientes, image_by_id,
-                              {r['id']: r['name'] for r in rivers}, river_slug),
+                              {r['id']: r['name'] for r in rivers}, river_slug, now),
         'mine': mine(member, phone) if (member or phone) else None,
     }
 
@@ -232,8 +236,8 @@ def _timeline(images, detections, image_by_id) -> list[dict]:
     return [{'month': m, **months[m]} for m in sorted(months)]
 
 
-def _activity(images, per_image, alerts, expedientes, image_by_id, river_name, river_slug) -> list[dict]:
-    """Anonymized timeline: what happened, on which river, never who."""
+def _activity(images, per_image, alerts, expedientes, image_by_id, river_name, river_slug, now) -> list[dict]:
+    """Anonymized timeline: what happened, on which river, never who. Nothing dated after the clock."""
     events = []
     for image in images:
         name = river_name.get(image['river_id'], '')
@@ -249,10 +253,13 @@ def _activity(images, per_image, alerts, expedientes, image_by_id, river_name, r
         image = image_by_id[e['image_id']]
         name = river_name.get(image['river_id'], '')
         slug = river_slug.get(image['river_id'])
-        events.append({'at': e['created'], 'kind': 'expediente_opened', 'river': slug,
-                       'label': f'Una ONG abrió un expediente por el río {name}'})
+        # Automatic drafts are silent: they count as opened only once a member edits them.
+        if not e['auto_created'] or e['updated_by_id']:
+            events.append({'at': e['updated'] if e['auto_created'] else e['created'], 'kind': 'expediente_opened',
+                           'river': slug, 'label': f'Una ONG abrió un expediente por el río {name}'})
         if e['status'] == Expediente.Status.FILED:
             events.append({'at': e['filed_at'] or e['created'], 'kind': 'expediente_filed', 'river': slug,
                            'label': f'Una ONG presentó la denuncia por el río {name}'})
+    events = [ev for ev in events if ev['at'] <= now]
     events.sort(key=lambda ev: ev['at'], reverse=True)
     return [{**ev, 'at': iso(ev['at'])} for ev in events[:MAX_ACTIVITY]]

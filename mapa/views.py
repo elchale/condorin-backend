@@ -18,6 +18,7 @@ from django.utils.cache import get_conditional_response, patch_vary_headers
 from rest_framework.views import APIView
 
 from accounts.session import bearer_phone
+from core import clock
 from ongs.models import Member
 
 from .builder import build_mapa
@@ -33,23 +34,25 @@ _build_lock = threading.Lock()
 
 
 def _encode(payload: dict) -> tuple[bytes, str]:
-    """The JSON body and its ETag. The ETag ignores `generated_at`, so it only changes with the data."""
+    """The JSON body and its ETag. The ETag ignores the ticking clock, so it only changes with the data or the day."""
     body = json.dumps(payload, cls=DjangoJSONEncoder, ensure_ascii=False, separators=(',', ':')).encode()
-    stable = json.dumps({**payload, 'generated_at': None}, cls=DjangoJSONEncoder, sort_keys=True).encode()
+    stable = json.dumps({**payload, 'generated_at': None, 'clock': payload.get('clock', {}).get('today')},
+                        cls=DjangoJSONEncoder, sort_keys=True).encode()
     return body, f'"{hashlib.sha256(stable).hexdigest()[:32]}"'
 
 
 def public_payload() -> tuple[bytes, str]:
     if settings.MAPA_CACHE_SECONDS <= 0:
         return _encode(build_mapa())
-    cached = cache.get(CACHE_KEY)
+    key = f'{CACHE_KEY}:{clock.today()}'  # a change of day (demo clock) is a different payload
+    cached = cache.get(key)
     if cached is not None:
         return cached
     with _build_lock:
-        cached = cache.get(CACHE_KEY)
+        cached = cache.get(key)
         if cached is None:
             cached = _encode(build_mapa())
-            cache.set(CACHE_KEY, cached, settings.MAPA_CACHE_SECONDS)
+            cache.set(key, cached, settings.MAPA_CACHE_SECONDS)
     return cached
 
 

@@ -3,7 +3,9 @@
 POST  /api/v1/auth/codigo                         {"phone", "consent": true} → 202 {"phone", "pending"}
 POST  /api/v1/auth/entrar                         {"pending", "code"} → {"token", "member", "ong", "via": "code"}
 POST  /api/v1/auth/enlace                         {"token": <alert token>} → the same with "via": "link" (7 days)
-GET   /api/v1/me                                  Bearer → the same payload as GET /api/v1/panel
+GET   /api/v1/me?page=N                           Bearer → the GET /api/v1/panel payload, one page of incidents
+                                                  plus {"pagination": {"count", "next", "previous"}}
+GET   /api/v1/me/incidentes?page=N                Bearer → {"count", "next", "previous", "results"} ("Ver más")
 POST  /api/v1/me/incidentes/<id>/expediente       Bearer → {"token"} (the member's expediente link)
 
 Browsers call these directly (the static SPA at condorin.pe and the map). A `link` session reads the panel
@@ -27,8 +29,8 @@ from rest_framework.views import APIView
 from core import whatsapp
 from core.exceptions import BaseError
 from expedientes.codes import MAX_ATTEMPTS, RESEND_SECONDS, CodeExpired, CodeInvalid, CodeTooSoon
-from panel.services import member_for_phone, open_from_panel, sign_in_by_link
-from panel.views import panel_payload
+from panel.services import incident_images, member_for_phone, open_from_panel, sign_in_by_link, with_expedientes
+from panel.views import IncidentPagination, incident_rows, panel_payload
 
 from .models import Member as SiteUser
 from .session import (
@@ -152,7 +154,27 @@ class MeView(APIView):
     throttle_scope = 'me'
 
     def get(self, request):
-        return Response(panel_payload(*member_for_phone(require_session(request))))
+        member, joined = member_for_phone(require_session(request))
+        paginator = IncidentPagination()
+        page = paginator.paginate_queryset(incident_images(member.ong), request, view=self)
+        payload = panel_payload(member, joined, with_expedientes(member.ong, page))
+        payload['pagination'] = {
+            'count': paginator.page.paginator.count,
+            'next': paginator.get_next_link(),
+            'previous': paginator.get_previous_link(),
+        }
+        return Response(payload)
+
+
+class MeIncidentsView(APIView):
+    """The next pages of the member's incidents, in DRF's standard page envelope."""
+    throttle_scope = 'me'
+
+    def get(self, request):
+        member, _ = member_for_phone(require_session(request))
+        paginator = IncidentPagination()
+        page = paginator.paginate_queryset(incident_images(member.ong), request, view=self)
+        return paginator.get_paginated_response(incident_rows(with_expedientes(member.ong, page)))
 
 
 class MeExpedienteView(APIView):

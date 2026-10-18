@@ -250,8 +250,10 @@ def test_ready_expediente_can_be_reopened_to_fix_it(client, maria, fixed_code):
 def test_event_page_does_not_open_the_expediente(client, maria):
     data = client.get(f'/api/v1/eventos/{maria.token}').json()
     assert data['incident']['river']['name'] == 'Yaguas' and data['incident']['detections'][0]['maps_url']
-    assert data['expediente'] is None and data['ong']['name'] == 'Amazonía Viva'
-    assert not Expediente.objects.exists()
+    assert data['ong']['name'] == 'Amazonía Viva'
+    # Only the automatic draft from ingest exists, and reading the event page leaves it untouched.
+    assert data['expediente']['status_label'] == 'Borrador listo para revisar'
+    assert Expediente.objects.get().updated_by is None
     assert Alert.objects.get(pk=maria.pk).opened_at is None
 
     client.get(url(maria))

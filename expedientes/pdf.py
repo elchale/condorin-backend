@@ -8,7 +8,6 @@ import io
 import logging
 from xml.sax.saxutils import escape
 
-from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -16,7 +15,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from core import gcs
+from core import clock, gcs
 from core.geo import coord, maps_url, utm
 from detections.text import fecha_corta, fecha_larga
 
@@ -86,7 +85,7 @@ def build_pdf(expediente, final: bool) -> bytes:
     detections = list(image.alerting_detections())
     authorities = list(expediente.authorities.filter(active=True))
     history = earlier_sightings(image)
-    today = timezone.localdate()
+    today = clock.today()
 
     story = [
         _p('DENUNCIA POR PRESUNTO DELITO DE MINERÍA ILEGAL', 'title'),
@@ -172,7 +171,7 @@ def build_pdf(expediente, final: bool) -> bytes:
 
     story.append(Spacer(1, 1.6 * cm))
     story.append(KeepTogether([
-        _p(f'{place_city(river)}, {fecha_corta(timezone.now()) if final else "fecha de presentación"}'),
+        _p(f'{place_city(river)}, {fecha_corta(clock.now()) if final else "fecha de presentación"}'),
         Spacer(1, 2 * cm),
         _p('______________________________'),
         _p(f'{expediente.rep_name}\nDNI {expediente.rep_dni or "pendiente"}'

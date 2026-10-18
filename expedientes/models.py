@@ -82,6 +82,8 @@ class Expediente(BaseModel):
     truth_declared = models.BooleanField('declara que los hechos son verdaderos', default=False)
     authorities = models.ManyToManyField(Authority, blank=True, related_name='expedientes')
 
+    # True when Ojo de Cóndor drafted it on its own at ingest (no member tapped anything yet).
+    auto_created = models.BooleanField('borrador automático', default=False)
     created_by = models.ForeignKey('ongs.Member', on_delete=models.SET_NULL, null=True, related_name='+')
     updated_by = models.ForeignKey('ongs.Member', on_delete=models.SET_NULL, null=True, related_name='+')
 

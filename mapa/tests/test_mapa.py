@@ -13,7 +13,7 @@ from expedientes.models import Expediente
 
 pytestmark = pytest.mark.django_db
 
-TOP_KEYS = {'generated_at', 'brand', 'bbox', 'totals', 'rivers', 'images', 'detections', 'timeline', 'activity', 'mine'}
+TOP_KEYS = {'generated_at', 'clock', 'brand', 'bbox', 'totals', 'rivers', 'images', 'detections', 'timeline', 'activity', 'mine'}
 TOTAL_KEYS = {'images', 'detections', 'alerting_detections', 'alerts_sent', 'alerts_opened', 'expedientes',
               'expedientes_filed', 'ongs', 'members', 'users', 'rivers'}
 
@@ -26,7 +26,8 @@ def scene(post_detection, payload, ong, sent):
 
 
 def test_payload_shape(client, scene):
-    Expediente.objects.create(image=scene, ong=scene.river.ongs.first())
+    # The automatic draft is silent until a member edits it.
+    Expediente.objects.update(updated_by=scene.alerts.first().member)
     resp = client.get('/api/v1/mapa')
     assert resp.status_code == 200
     body = resp.json()

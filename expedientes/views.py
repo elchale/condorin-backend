@@ -14,10 +14,16 @@ from rest_framework.views import APIView
 from core.whatsapp import WhatsAppError
 
 from . import codes, mailer
+from .autodraft import adopt
 from .models import Expediente
 from .pdf import build_pdf
 from .serializers import ExpedienteUpdateSerializer, event_payload, expediente_payload
 from .services import alert_for_token, finalize, missing_fields, open_expediente, update_expediente
+
+
+def _open(alert):
+    """The expediente behind a link; an automatic draft is found, never created twice."""
+    return adopt(open_expediente(alert), alert.member)
 
 
 class ExpedienteView(APIView):
@@ -25,14 +31,14 @@ class ExpedienteView(APIView):
 
     def get(self, request, token):
         alert = alert_for_token(token)
-        expediente = open_expediente(alert)
+        expediente = _open(alert)
         if request.query_params.get('formato') == 'pdf':
             return _pdf_response(expediente)
         return Response(expediente_payload(expediente, alert))
 
     def patch(self, request, token):
         alert = alert_for_token(token)
-        expediente = open_expediente(alert)
+        expediente = _open(alert)
         serializer = ExpedienteUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         expediente = update_expediente(expediente, alert.member, dict(serializer.validated_data))
@@ -53,7 +59,7 @@ class ExpedienteSendView(APIView):
 
     def post(self, request, token):
         alert = alert_for_token(token)
-        expediente = open_expediente(alert)
+        expediente = _open(alert)
         member = alert.member
 
         if expediente.status != Expediente.Status.DRAFT:

@@ -15,9 +15,9 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections, transaction
-from django.utils import timezone
 
-from core import gcs, whatsapp
+from core import clock, gcs, whatsapp
+from expedientes.autodraft import create_drafts
 from ongs.models import Member, River
 from ongs.team import sync_internal_team
 
@@ -37,7 +37,8 @@ NO_RECIPIENTS = 'no_recipients'
 
 
 def is_recent(image: SatelliteImage) -> bool:
-    return image.captured_at >= timezone.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
+    """Captured within ALERT_RECENT_DAYS of the API's clock (core.clock: real, or the demo day)."""
+    return image.captured_at >= clock.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
 
 
 def is_simulated(image: SatelliteImage) -> bool:
@@ -75,6 +76,21 @@ def recipients(river: River) -> list[Member]:
         phones.add(m.phone)
         chosen.append(m)
     return chosen
+
+
+def queue_alerts(image: SatelliteImage) -> int:
+    """An alert row for every current recipient of the river who has none for this scene yet. Returns how many.
+
+    Used when the clock is moved to the scene's day (core.clock.replay_today); the rows start pending and
+    process_image sends them. Members already alerted keep their row, so nobody is messaged twice.
+    """
+    if is_simulated(image) or not image.alerting_detections().exists():
+        return 0
+    created = 0
+    for member in recipients(image.river):
+        _, new = Alert.objects.get_or_create(image=image, member=member)
+        created += int(new)
+    return created
 
 
 def idempotency_key(header_value: str, image: dict) -> str:
@@ -128,6 +144,8 @@ def ingest(data: dict, key: str, raw: dict) -> tuple[SatelliteImage, bool]:
             Alert.objects.bulk_create([Alert(image=image, member=m) for m in members])
             if not members:
                 logger.warning('detections: river %s has no ONG members or admins, nobody was alerted', river.slug)
+        # Every scene, recent or old, gets its prefilled draft per watching ONG. Silent: nothing is sent.
+        create_drafts(image)
 
     transaction.on_commit(lambda: dispatch(image.pk))
     return image, True
@@ -230,5 +248,5 @@ def send_alert(alert: Alert) -> None:
     except whatsapp.WhatsAppError as exc:
         alert.status, alert.error = Alert.Status.FAILED, str(exc)[:2000]
     else:
-        alert.status, alert.error, alert.sent_at = Alert.Status.SENT, '', timezone.now()
+        alert.status, alert.error, alert.sent_at = Alert.Status.SENT, '', clock.now()
     alert.save(update_fields=['attempts', 'wa_message_id', 'status', 'error', 'sent_at', 'updated'])

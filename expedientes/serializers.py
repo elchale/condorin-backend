@@ -8,6 +8,7 @@ from core.geo import coord, maps_url, utm
 from detections.text import fecha_corta, fecha_larga
 from ongs.models import dni_validator, ruc_validator
 
+from .autodraft import status_label
 from .codes import phone_hint
 from .drafting import earlier_sightings, place_sentence
 from .models import Authority, Expediente
@@ -132,7 +133,7 @@ def event_payload(alert) -> dict:
         'incident': incident_payload(image),
         'expediente': expediente and {
             'status': expediente.status,
-            'status_label': expediente.get_status_display(),
+            'status_label': status_label(expediente),
             'folio': expediente.folio,
             'missing': len(missing_fields(expediente)) if expediente.status == Expediente.Status.DRAFT else 0,
             'updated_by': expediente.updated_by.full_name if expediente.updated_by else None,

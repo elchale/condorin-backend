@@ -3,14 +3,14 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Prefetch
-from django.utils import timezone
+from django.db.models import Count, Prefetch, QuerySet
 from rest_framework.exceptions import NotFound, PermissionDenied
 
-from core import gcs
+from core import clock, gcs
 from core.exceptions import BaseError
 from detections.models import Alert, Detection, SatelliteImage, default_expiry
 from detections.services import dispatch, is_simulated
+from expedientes.autodraft import status_label  # noqa: F401  (the panel and the activity feed label)
 from expedientes.models import Expediente
 from expedientes.services import missing_fields
 from ongs.models import Member, Ong
@@ -59,8 +59,8 @@ def send_latest_alert(member: Member) -> Alert | None:
 
     Only a real recent scene (captured within ALERT_RECENT_DAYS, not simulated) is sent; otherwise nothing.
     """
-    since = timezone.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
-    image = (SatelliteImage.objects
+    since = clock.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
+    image = (clock.visible(SatelliteImage.objects)
              .filter(river__in=member.ong.rivers.all(), captured_at__gte=since,
                      detections__confidence__gte=settings.ALERT_MIN_CONFIDENCE)
              .order_by('-captured_at').first())
@@ -72,21 +72,52 @@ def send_latest_alert(member: Member) -> Alert | None:
     return alert
 
 
-def incidents(ong: Ong) -> list[tuple[SatelliteImage, list[Detection], Expediente | None]]:
-    """Scenes on the ONG's rivers that alerted someone, newest first, with the ONG's expediente if any."""
+def incident_images(ong: Ong) -> QuerySet[SatelliteImage]:
+    """Scenes on the ONG's rivers that alerted someone, newest first, as a queryset to page or count.
+
+    Only scenes captured up to the API's clock: with the demo clock, the later ones do not exist yet.
+    The pk tiebreak keeps pages stable when two scenes share a capture time.
+    """
     alerting = Detection.objects.filter(confidence__gte=settings.ALERT_MIN_CONFIDENCE).order_by('-confidence')
-    images = list(
-        SatelliteImage.objects
+    return (
+        clock.visible(SatelliteImage.objects)
         .filter(river__in=ong.rivers.all(), detections__confidence__gte=settings.ALERT_MIN_CONFIDENCE)
         .distinct().select_related('river')
         .prefetch_related(Prefetch('detections', queryset=alerting, to_attr='alerting'))
-        .order_by('-captured_at')[:INCIDENT_LIMIT]
+        .order_by('-captured_at', '-pk')
     )
+
+
+def with_expedientes(ong: Ong, images) -> list[tuple[SatelliteImage, list[Detection], Expediente | None]]:
+    """Each scene with its alerting detections and the ONG's expediente for it, if any."""
+    images = list(images)
     expedientes = {
         e.image_id: e for e in Expediente.objects.filter(ong=ong, image__in=images)
         .select_related('updated_by').prefetch_related('authorities', 'filings')
     }
     return [(image, image.alerting, expedientes.get(image.pk)) for image in images]
+
+
+def incidents(ong: Ong) -> list[tuple[SatelliteImage, list[Detection], Expediente | None]]:
+    """The newest INCIDENT_LIMIT incidents (condorin.pe's unpaged panel)."""
+    return with_expedientes(ong, incident_images(ong)[:INCIDENT_LIMIT])
+
+
+def incident_totals(ong: Ong) -> dict:
+    """Counts over every incident of the ONG (not just one page), computed in the database."""
+    images = incident_images(ong).order_by()
+    total = images.count()
+    by_status = dict(
+        Expediente.objects.filter(ong=ong, image__in=images.values('pk'))
+        .order_by().values_list('status').annotate(n=Count('pk'))
+    )
+    return {
+        'incidents': total,
+        'without_expediente': total - sum(by_status.values()),
+        'draft': by_status.get(Expediente.Status.DRAFT, 0),
+        'ready': by_status.get(Expediente.Status.READY, 0),
+        'filed': by_status.get(Expediente.Status.FILED, 0),
+    }
 
 
 def open_from_panel(member: Member, image_id: int) -> Alert:
@@ -112,7 +143,7 @@ def sign_in_by_link(token: str) -> Member:
              .filter(token=token, status=Alert.Status.SENT, member__active=True, member__ong__active=True)
              .first())
     window = timedelta(days=settings.LINK_SIGN_IN_DAYS)
-    if alert is None or alert.is_expired or not alert.sent_at or timezone.now() > alert.sent_at + window:
+    if alert is None or alert.is_expired or not alert.sent_at or clock.now() > alert.sent_at + window:
         raise NotFound('Este enlace no permite iniciar sesión.')
     if alert.member.ong.internal:
         # An admin's alert signs them in as their own ONG member, never as the hidden internal team.

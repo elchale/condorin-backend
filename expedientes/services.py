@@ -5,14 +5,13 @@ import threading
 
 from django.conf import settings
 from django.db import close_old_connections, transaction
-from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
-from core import gcs
+from core import clock, gcs
 from core.exceptions import BaseError
 from detections.models import Alert
 
-from . import mailer
+from . import mailer, redaccion
 from .drafting import FIELD_OBSERVATIONS, draft_evidence_links, draft_facts, draft_place_reference, draft_risks
 from .models import Authority, Expediente, Filing
 
@@ -98,12 +97,17 @@ def notify_opened(alert_id: int) -> None:
 def open_expediente(alert: Alert) -> Expediente:
     """The ONG's expediente for this image; created and prefilled on the first tap."""
     if alert.opened_at is None:
-        alert.opened_at = timezone.now()
+        alert.opened_at = clock.now()
         alert.save(update_fields=['opened_at', 'updated'])
         transaction.on_commit(lambda: notify_opened(alert.pk))
 
     member, ong, image = alert.member, alert.member.ong, alert.image
+    # Drafting (and the Claude call behind it) only runs when the expediente does not exist yet.
+    expediente = Expediente.objects.select_for_update().filter(image=image, ong=ong).first()
+    if expediente is not None:
+        return expediente
     rep = signer(member)
+    place = draft_place_reference(image)
     expediente, created = Expediente.objects.select_for_update().get_or_create(
         image=image, ong=ong,
         defaults={
@@ -115,8 +119,8 @@ def open_expediente(alert: Alert) -> Expediente:
             'rep_dni': rep.dni,
             'rep_position': rep.position,
             'rep_phone': rep.phone,
-            'facts': draft_facts(image),
-            'place_reference': draft_place_reference(image),
+            'facts': redaccion.improve_facts(draft_facts(image), place),
+            'place_reference': place,
             'field_observations': FIELD_OBSERVATIONS,
             'field_evidence_links': draft_evidence_links(image),
             'suspects': 'Por identificar.',
@@ -218,7 +222,7 @@ def finalize(expediente: Expediente, member) -> Expediente:
 
     expediente.status = Expediente.Status.READY
     expediente.finalized_by = member
-    expediente.finalized_at = timezone.now()
+    expediente.finalized_at = clock.now()
     if not expediente.folio:
         expediente.folio = f'CND-{expediente.finalized_at:%Y}-{expediente.pk:05d}'
     expediente.pdf = build_pdf(expediente, final=True)

@@ -50,7 +50,7 @@ def parse_limit(value) -> int:
 
 def activity_feed(limit: int = DEFAULT_LIMIT) -> dict:
     threshold = settings.ALERT_MIN_CONFIDENCE
-    watching = Ong.objects.filter(active=True).annotate(
+    watching = Ong.objects.filter(active=True, internal=False).annotate(
         active_members=Count('members', filter=Q(members__active=True)),
     ).order_by('pk')
     images = (

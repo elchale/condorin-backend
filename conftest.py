@@ -11,6 +11,8 @@ def _offline(settings, monkeypatch):
     cache.clear()  # throttling counters
     settings.DETECTIONS_SHARED_SECRET = 'test-secret'
     settings.DETECTIONS_ALLOWED_SERVICE_ACCOUNTS = ['detector@condorin.iam.gserviceaccount.com']
+    # The fixture scenes carry fixed October 2026 dates; the tests of the recent window set it themselves.
+    settings.ALERT_RECENT_DAYS = 36500
 
     def no_storage():
         raise gcs.StorageUnavailable('offline in tests')

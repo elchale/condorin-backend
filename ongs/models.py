@@ -34,6 +34,14 @@ class River(BaseModel):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        created = self._state.adding
+        super().save(*args, **kwargs)
+        if created:
+            # A new river is watched by the internal team from the start, so the admins hear about it.
+            for team in Ong.objects.filter(internal=True):
+                team.rivers.add(self)
+
 
 class Ong(BaseModel):
     """An organisation that receives the alerts for its rivers and files the denuncias."""
@@ -45,6 +53,11 @@ class Ong(BaseModel):
     email = models.EmailField('correo para notificaciones', blank=True)
     rivers = models.ManyToManyField(River, blank=True, related_name='ongs')
     active = models.BooleanField(default=True)
+    internal = models.BooleanField(
+        'interna', default=False,
+        help_text='El equipo de Ojo de Cóndor: vigila todos los ríos y reúne a los administradores con WhatsApp. '
+                  'No aparece en el mapa público ni en el panel.',
+    )
 
     class Meta:
         ordering = ['name']

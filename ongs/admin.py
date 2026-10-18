@@ -11,7 +11,7 @@ class MemberInline(admin.TabularInline):
 
 @admin.register(Ong)
 class OngAdmin(admin.ModelAdmin):
-    list_display = ['name', 'short_name', 'ruc', 'active']
+    list_display = ['name', 'short_name', 'ruc', 'active', 'internal']
     list_filter = ['active', 'rivers']
     search_fields = ['name', 'short_name', 'ruc']
     filter_horizontal = ['rivers']

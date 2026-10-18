@@ -1,5 +1,9 @@
 """Store a webhook delivery, then alert every member of the ONGs that watch that river.
 
+Only a recent scene alerts (captured within ALERT_RECENT_DAYS): its recipients are the active
+members of every ONG watching the river plus the admins with a phone, through the hidden internal
+ONG (ongs.team). Older or simulated scenes are stored and shown on the map but alert nobody.
+
 Delivery is at least once on the detector side, so storing is idempotent on the
 Idempotency-Key and every alert row is unique per (image, member): a retry never
 messages anyone twice.
@@ -7,6 +11,7 @@ messages anyone twice.
 import hashlib
 import logging
 import threading
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections, transaction
@@ -14,6 +19,7 @@ from django.utils import timezone
 
 from core import gcs, whatsapp
 from ongs.models import Member, River
+from ongs.team import sync_internal_team
 
 from .models import Alert, Detection, SatelliteImage
 from .text import alert_template_components
@@ -21,6 +27,54 @@ from .text import alert_template_components
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 5
+
+# Why a scene did or did not alert, as the webhook reports it.
+ALERTED = 'alerted'
+OLD_SCENE = 'old_scene'
+SIMULATED = 'simulated'
+BELOW_THRESHOLD = 'below_threshold'
+NO_RECIPIENTS = 'no_recipients'
+
+
+def is_recent(image: SatelliteImage) -> bool:
+    return image.captured_at >= timezone.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
+
+
+def is_simulated(image: SatelliteImage) -> bool:
+    """A payload marked as demo or simulated (simulate_detection marks its own) never notifies anyone."""
+    payload = image.payload if isinstance(image.payload, dict) else {}
+    return bool(payload.get('simulated') or payload.get('demo'))
+
+
+def may_notify(image: SatelliteImage) -> bool:
+    return is_recent(image) and not is_simulated(image)
+
+
+def alert_reason(image: SatelliteImage) -> str:
+    if is_simulated(image):
+        return SIMULATED
+    if not image.alerting_detections().exists():
+        return BELOW_THRESHOLD
+    if not is_recent(image):
+        return OLD_SCENE
+    return ALERTED if image.alerts.exists() else NO_RECIPIENTS
+
+
+def recipients(river: River) -> list[Member]:
+    """Active members of the active ONGs watching the river, then the admins (internal team).
+
+    An admin who is also a member of a watching ONG gets one message, as that member.
+    """
+    sync_internal_team()
+    members = list(Member.objects.filter(active=True, ong__active=True, ong__rivers=river)
+                   .select_related('ong').order_by('ong__internal', 'pk').distinct())
+    chosen, phones = [], set()
+    for m in members:
+        if m.ong.internal and m.phone in phones:
+            continue
+        phones.add(m.phone)
+        chosen.append(m)
+    return chosen
 
 
 def idempotency_key(header_value: str, image: dict) -> str:
@@ -64,21 +118,38 @@ def ingest(data: dict, key: str, raw: dict) -> tuple[SatelliteImage, bool]:
     ])
 
     if image.alerting_detections().exists():
-        members = Member.objects.filter(active=True, ong__active=True, ong__rivers=river).distinct()
-        Alert.objects.bulk_create([Alert(image=image, member=m) for m in members])
-        if not members:
-            logger.warning('detections: river %s has no ONG members, nobody was alerted', river.slug)
+        if is_simulated(image):
+            logger.info('detections: image %s is marked simulated, nobody was alerted', image.pk)
+        elif not is_recent(image):
+            logger.info('detections: image %s was captured %s, older than %s days, nobody was alerted',
+                        image.pk, image.captured_at, settings.ALERT_RECENT_DAYS)
+        else:
+            members = recipients(river)
+            Alert.objects.bulk_create([Alert(image=image, member=m) for m in members])
+            if not members:
+                logger.warning('detections: river %s has no ONG members or admins, nobody was alerted', river.slug)
 
     transaction.on_commit(lambda: dispatch(image.pk))
     return image, True
 
 
 def dispatch(image_id: int) -> None:
-    """Runs after the webhook responds, on a thread, or inline when ALERTS_INLINE."""
+    """Runs after the webhook responds, on a thread, or inline when ALERTS_INLINE or the thread cannot start."""
     if getattr(settings, 'ALERTS_INLINE', False):
-        process_image(image_id)
+        _run_inline(image_id)
         return
-    threading.Thread(target=_run_in_thread, args=(image_id,), daemon=True, name=f'alerts-{image_id}').start()
+    try:
+        threading.Thread(target=_run_in_thread, args=(image_id,), daemon=True, name=f'alerts-{image_id}').start()
+    except RuntimeError:
+        logger.warning('detections: could not start the alert thread for image %s, sending inline', image_id)
+        _run_inline(image_id)
+
+
+def _run_inline(image_id: int) -> None:
+    try:
+        process_image(image_id)
+    except Exception:
+        logger.exception('detections: inline alert dispatch crashed for image %s', image_id)
 
 
 def _run_in_thread(image_id: int) -> None:
@@ -93,6 +164,10 @@ def _run_in_thread(image_id: int) -> None:
 def process_image(image_id: int) -> None:
     image = SatelliteImage.objects.select_related('river').get(pk=image_id)
     pin_evidence(image)
+    if not may_notify(image):
+        # Retries and late dispatches never message about an old or simulated scene.
+        logger.info('detections: image %s is old or simulated, its pending alerts are not sent', image.pk)
+        return
     for alert in image.alerts.filter(status__in=[Alert.Status.PENDING, Alert.Status.FAILED],
                                      attempts__lt=MAX_ATTEMPTS).select_related('member'):
         send_alert(alert)

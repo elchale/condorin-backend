@@ -28,6 +28,13 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
          files it on the FEMA and OEFA forms, types the receipt number ──PATCH──▶ status filed
 ```
 
+- **Who is alerted, and when.** Only a scene captured within `ALERT_RECENT_DAYS` (default 7) alerts, at
+  once, on commit. Recipients: every active member of every active ONG watching the river, plus every
+  active admin (`accounts_admin`) with a `phone` (`manage.py set_admin_phone <email> <phone>`). Admins sit in
+  the hidden ONG "Equipo Ojo de Cóndor" (`internal=True`, `ongs/team.py`), which watches every river, gets
+  its own personal tokens and expedientes, and stays out of the public map and the panel. Older scenes,
+  and payloads marked `"simulated"` or `"demo"`, are stored and shown but alert nobody; the webhook answers
+  `alerted` and `reason` (`alerted`, `old_scene`, `simulated`, `below_threshold`, `no_recipients`).
 - **One expediente per image and ONG.** Every member of the ONG who taps the alert opens the same one,
   so two people never file duplicates. Each ONG gets its own.
 - **The token is personal** (one per member per image) and expires after `ALERT_LINK_DAYS`. A forwarded
@@ -127,8 +134,10 @@ In `/admin`, create an ONG, tick the rivers it watches, and add its members (nam
 number). Then:
 
 ```bash
-python manage.py simulate_detection --river yaguas   # runs the real pipeline, prints each member's link
-python manage.py send_pending_alerts                 # retries alerts that failed (cron or by hand)
+python manage.py simulate_detection --river yaguas   # stores a scene marked simulated: alerts nobody, needs WA_SEND_ENABLED=False
+python manage.py send_pending_alerts                 # retries alerts that failed (cron or by hand), recent scenes only
+python manage.py purge_demo_events                   # lists demo and mock scenes; --yes deletes them with alerts and expedientes
+python manage.py set_admin_phone admin@example.org 51987654321   # admin gets every recent alert (--clear to stop)
 python manage.py create_alert_template               # prints the WhatsApp template; --submit sends it to Meta
 python -X utf8 manage.py export_mapa > ../mapa-data/mapa-snapshot.json   # offline snapshot of GET /api/v1/mapa
 python -X utf8 manage.py refresh_fuentes   # fetch the open data feeds now (--source firms, --force); writes only FeedCache

@@ -13,6 +13,9 @@ DETECTIONS_OIDC_AUDIENCE = env('DETECTIONS_OIDC_AUDIENCE', default='https://api.
 DETECTIONS_ALLOWED_SERVICE_ACCOUNTS = env.list('DETECTIONS_ALLOWED_SERVICE_ACCOUNTS', default=[])
 # Detections below this confidence are stored but do not alert anyone.
 ALERT_MIN_CONFIDENCE = env.float('ALERT_MIN_CONFIDENCE', default=0.5)
+# Only scenes captured within this many days alert by WhatsApp (ONG members and admins with a phone).
+# Older scenes are stored and shown on the map but alert nobody.
+ALERT_RECENT_DAYS = env.int('ALERT_RECENT_DAYS', default=7)
 
 # WhatsApp Cloud API, Qolca Solutions WABA (same number as the condorin.pe sign in).
 WA_GRAPH_URL = env('WA_GRAPH_URL', default='https://graph.facebook.com/v23.0')

@@ -12,5 +12,5 @@ class MemberAdmin(admin.ModelAdmin):
 
 @admin.register(Admin)
 class AdminAdmin(admin.ModelAdmin):
-    list_display = ['email', 'name', 'active', 'created']
+    list_display = ['email', 'name', 'phone', 'active', 'created']
     list_editable = ['active']

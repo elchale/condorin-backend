@@ -10,7 +10,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from core import gcs
 from core.exceptions import BaseError
 from detections.models import Alert, Detection, SatelliteImage, default_expiry
-from detections.services import dispatch
+from detections.services import dispatch, is_simulated
 from expedientes.models import Expediente
 from expedientes.services import missing_fields
 from ongs.models import Member, Ong
@@ -25,7 +25,7 @@ class NoOngAvailable(BaseError):
 
 def default_ong() -> Ong | None:
     # TODO: demo only. Every new person joins one ONG; replace with real invitations later.
-    ongs = Ong.objects.filter(active=True)
+    ongs = Ong.objects.filter(active=True, internal=False)
     if settings.DEFAULT_ONG_ID:
         return ongs.filter(pk=settings.DEFAULT_ONG_ID).first()
     return ongs.order_by('pk').first()
@@ -37,7 +37,7 @@ def member_for_phone(phone: str) -> tuple[Member, bool]:
     Someone already in an ONG keeps it. Anyone else joins the default ONG (demo only, see default_ong).
     """
     member = (Member.objects.select_related('ong')
-              .filter(phone=phone, active=True, ong__active=True).order_by('pk').first())
+              .filter(phone=phone, active=True, ong__active=True, ong__internal=False).order_by('pk').first())
     if member:
         return member, False
     ong = default_ong()
@@ -55,11 +55,16 @@ def member_for_phone(phone: str) -> tuple[Member, bool]:
 
 
 def send_latest_alert(member: Member) -> Alert | None:
-    """A new member gets the ONG's most recent alert by WhatsApp at once, so they see how Ojo de Cóndor works."""
+    """A new member gets the ONG's most recent alert by WhatsApp at once, so they see how Ojo de Cóndor works.
+
+    Only a real recent scene (captured within ALERT_RECENT_DAYS, not simulated) is sent; otherwise nothing.
+    """
+    since = timezone.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
     image = (SatelliteImage.objects
-             .filter(river__in=member.ong.rivers.all(), detections__confidence__gte=settings.ALERT_MIN_CONFIDENCE)
+             .filter(river__in=member.ong.rivers.all(), captured_at__gte=since,
+                     detections__confidence__gte=settings.ALERT_MIN_CONFIDENCE)
              .order_by('-captured_at').first())
-    if image is None:
+    if image is None or is_simulated(image):
         return None
     alert, created = Alert.objects.get_or_create(image=image, member=member)
     if created:
@@ -109,6 +114,9 @@ def sign_in_by_link(token: str) -> Member:
     window = timedelta(days=settings.LINK_SIGN_IN_DAYS)
     if alert is None or alert.is_expired or not alert.sent_at or timezone.now() > alert.sent_at + window:
         raise NotFound('Este enlace no permite iniciar sesión.')
+    if alert.member.ong.internal:
+        # An admin's alert signs them in as their own ONG member, never as the hidden internal team.
+        return member_for_phone(alert.member.phone)[0]
     return alert.member
 
 

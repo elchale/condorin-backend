@@ -4,8 +4,11 @@ Django owns the schema and the migrations; Prisma only maps onto these tables (s
 condorin/prisma/schema.prisma). Columns the frontend inserts without a value carry a
 database default (`db_default`) because Prisma does not run Django's Python defaults.
 """
+from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models.functions import Now
+
+phone_validator = RegexValidator(r'^\d{10,15}$', 'Solo dígitos con código de país, por ejemplo 51987654321.')
 
 
 class Member(models.Model):
@@ -35,6 +38,11 @@ class Admin(models.Model):
     email = models.EmailField(unique=True, help_text='En minúsculas, como lo devuelve Google.')
     name = models.CharField(max_length=120, null=True, blank=True)
     active = models.BooleanField(default=True, db_default=True)
+    # Nullable so Prisma, which never writes it, keeps inserting admins without it.
+    phone = models.CharField(
+        'WhatsApp', max_length=15, null=True, blank=True, validators=[phone_validator],
+        help_text='Recibe por WhatsApp cada alerta reciente de todos los ríos. Vacío: no recibe alertas.',
+    )
     created = models.DateTimeField(auto_now_add=True, db_default=Now())
 
     class Meta:

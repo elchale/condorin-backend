@@ -62,7 +62,7 @@ def build_mapa(member: Member | None = None, phone: str | None = None) -> dict:
     threshold = settings.ALERT_MIN_CONFIDENCE
 
     rivers = list(
-        River.objects.annotate(ong_count=Count('ongs', filter=Q(ongs__active=True), distinct=True))
+        River.objects.annotate(ong_count=Count('ongs', filter=Q(ongs__active=True, ongs__internal=False), distinct=True))
         .values('id', 'slug', 'name', 'basin', 'region', 'province', 'district', 'protected_area', 'ong_count')
         .order_by('name')
     )
@@ -82,7 +82,8 @@ def build_mapa(member: Member | None = None, phone: str | None = None) -> dict:
 
     alerts = {
         row['image_id']: row for row in
-        Alert.objects.filter(image_id__in=image_by_id).values('image_id').annotate(
+        # The admins' alerts (hidden internal ONG) are not public numbers.
+        Alert.objects.filter(image_id__in=image_by_id, member__ong__internal=False).values('image_id').annotate(
             sent=Count('id', filter=Q(status=Alert.Status.SENT)),
             opened=Count('id', filter=Q(opened_at__isnull=False)),
             ongs=Count('member__ong', filter=Q(status=Alert.Status.SENT), distinct=True),
@@ -97,8 +98,8 @@ def build_mapa(member: Member | None = None, phone: str | None = None) -> dict:
     )
 
     totals_counts = {
-        'ongs': Ong.objects.filter(active=True).count(),
-        'members': Member.objects.filter(active=True, ong__active=True).count(),
+        'ongs': Ong.objects.filter(active=True, internal=False).count(),
+        'members': Member.objects.filter(active=True, ong__active=True, ong__internal=False).count(),
         'users': SiteUser.objects.count(),
     }
 

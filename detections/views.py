@@ -4,14 +4,15 @@ from rest_framework.views import APIView
 
 from .auth import authenticate_detector
 from .serializers import DetectionWebhookSerializer
-from .services import idempotency_key, ingest
+from .services import ALERTED, alert_reason, idempotency_key, ingest
 
 
 class DetectionWebhookView(APIView):
     """POST /api/v1/detections: the detector reports what it found in one scene.
 
     201 on a new delivery, 200 when the Idempotency-Key was already processed.
-    Alerts go out after the response, so the detector never waits on WhatsApp.
+    Alerts go out after the response, so the detector never waits on WhatsApp, and only for
+    scenes captured within ALERT_RECENT_DAYS.
     """
 
     def get_authenticate_header(self, request):
@@ -26,12 +27,17 @@ class DetectionWebhookView(APIView):
 
         key = idempotency_key(request.headers.get('Idempotency-Key', ''), data['image'])
         image, created = ingest(data, key, raw=request.data)
+        reason = alert_reason(image)
         return Response(
             {
                 'id': image.pk,
                 'duplicate': not created,
                 'detections': image.detections.count(),
                 'alerts': image.alerts.count(),
+                # Only scenes captured within ALERT_RECENT_DAYS alert: reason is alerted, old_scene,
+                # simulated, below_threshold or no_recipients.
+                'alerted': reason == ALERTED,
+                'reason': reason,
             },
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )

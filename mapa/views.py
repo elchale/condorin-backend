@@ -62,7 +62,8 @@ class MapaView(APIView):
             (body, etag), cache_control = public_payload(), PUBLIC_CACHE
         else:
             member = (Member.objects.select_related('ong')
-                      .filter(phone=phone, active=True, ong__active=True).order_by('pk').first())
+                      .filter(phone=phone, active=True, ong__active=True, ong__internal=False)
+                      .order_by('pk').first())
             (body, etag), cache_control = _encode(build_mapa(member=member, phone=phone)), PRIVATE_CACHE
 
         response = get_conditional_response(request, etag=etag) or HttpResponse(

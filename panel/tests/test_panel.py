@@ -106,7 +106,7 @@ def test_open_expediente_from_panel(client, scene):
 def test_panel_alerts_are_never_sent(client, scene, sent):
     from django.core.management import call_command
     # A member added by hand (not through the panel join) gets no welcome alert.
-    Member.objects.create(ong=Ong.objects.get(), full_name='Rosa Inuma', phone='51911222333')
+    Member.objects.create(ong=Ong.objects.get(internal=False), full_name='Rosa Inuma', phone='51911222333')
     call(client, 'post', f'/api/v1/panel/incidentes/{scene.pk}/expediente', phone='51911222333')
     assert Alert.objects.get(member__phone='51911222333').status == Alert.Status.PANEL
     before = len(sent)

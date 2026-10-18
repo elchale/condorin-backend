@@ -198,7 +198,8 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {'plain': {'format': '{levelname} {asctime} {name} {message}', 'style': '{'}},
-    'handlers': {'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'}},
+    'filters': {'redact_tokens': {'()': 'core.middleware.RedactTokensFilter'}},
+    'handlers': {'console': {'class': 'logging.StreamHandler', 'formatter': 'plain', 'filters': ['redact_tokens']}},
     'root': {'handlers': ['console'], 'level': env('LOG_LEVEL', default='INFO')},
     'loggers': {
         'django.request': {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},

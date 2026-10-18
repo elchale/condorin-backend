@@ -4,6 +4,8 @@ import logging
 import requests
 from django.conf import settings
 
+from core.middleware import mask_phone
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,8 @@ def send_template(phone: str, name: str, components: list[dict]) -> str:
         'template': {'name': name, 'language': {'code': settings.WA_TEMPLATE_LANG}, 'components': components},
     }
     if not settings.WA_SEND_ENABLED:
-        logger.info('whatsapp disabled, would send %s to %s: %s', name, phone, components)
+        # Never the components: the code template carries the sign in code in them.
+        logger.info('whatsapp disabled, would send %s to %s', name, mask_phone(phone))
         return 'dry-run'
 
     try:

@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 
 from core import whatsapp
 from core.exceptions import BaseError
+from core.middleware import mask_phone
 from core.throttling import PhoneThrottle, ScopedThrottle
 from expedientes.codes import MAX_ATTEMPTS, RESEND_SECONDS, CodeExpired, CodeInvalid, CodeTooSoon
 from panel.services import incident_images, member_for_phone, open_from_panel, sign_in_by_link, with_expedientes
@@ -97,7 +98,7 @@ class CodeView(APIView):
             whatsapp.send_code(phone, code)
         except whatsapp.WhatsAppError as exc:
             cache.delete(lock)
-            logger.warning('sign in code to %s failed: %s', phone[-3:], exc)
+            logger.warning('sign in code to %s failed: %s', mask_phone(phone), exc)
             raise WhatsappError() from exc
         return Response({'phone': phone, 'pending': pending_value(phone, code), 'expires_in': CODE_SECONDS},
                         status=status.HTTP_202_ACCEPTED)

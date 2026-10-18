@@ -13,7 +13,11 @@ from core.phone import PHONE_RE
 
 
 def authenticate_frontend(request) -> None:
-    secret = settings.PANEL_API_SECRET
+    authenticate_secret(request, settings.PANEL_API_SECRET)
+
+
+def authenticate_secret(request, secret: str) -> None:
+    """`Authorization: Bearer <secret>`, compared in constant time. An empty secret turns the route off."""
     token = bearer_token(request)
     if token is None:
         raise NotAuthenticated('Falta el encabezado Authorization: Bearer.')

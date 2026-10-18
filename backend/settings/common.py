@@ -189,6 +189,12 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 
+# Where the Django admin lives. Default 'admin/' (the staff bookmarks); set ADMIN_URL to move it off the
+# path every scanner tries first.
+ADMIN_URL = env('ADMIN_URL', default='admin/').strip('/') + '/'
+# The secret of POST /api/v1/fuentes/refresh (the refresh-feeds workflow). Empty: PANEL_API_SECRET, as before.
+FUENTES_REFRESH_SECRET = env('FUENTES_REFRESH_SECRET', default='')
+
 # How long the anonymous GET /api/v1/mapa payload stays in the process cache.
 MAPA_CACHE_SECONDS = env.int('MAPA_CACHE_SECONDS', default=30)
 # How long the encoded GET /api/v1/fuentes body stays in the process cache (the feeds refresh in the background).

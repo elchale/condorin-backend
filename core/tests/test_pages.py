@@ -43,3 +43,23 @@ def test_test_settings_refuse_neon(monkeypatch):
     monkeypatch.delitem(sys.modules, 'backend.test_settings')
     with pytest.raises(RuntimeError, match='Neon'):
         importlib.import_module('backend.test_settings')
+
+
+def test_admin_stays_at_admin_by_default(client, settings):
+    from django.urls import resolve
+
+    assert settings.ADMIN_URL == 'admin/'
+    assert resolve('/admin/').app_name == 'admin'
+
+
+def test_admin_url_override(monkeypatch):
+    import importlib
+
+    from backend.settings import common
+
+    monkeypatch.setenv('ADMIN_URL', '/gestion-interna/')
+    try:
+        assert importlib.reload(common).ADMIN_URL == 'gestion-interna/'
+    finally:
+        monkeypatch.delenv('ADMIN_URL')
+        importlib.reload(common)

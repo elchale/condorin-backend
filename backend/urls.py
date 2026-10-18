@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path
 
@@ -24,7 +25,7 @@ urlpatterns = [
     path('', landing, name='landing'),
     path('healthz/', healthz, name='healthz'),
     path('readyz/', readyz, name='readyz'),
-    path('admin/', admin.site.urls),
+    path(settings.ADMIN_URL, admin.site.urls),  # 'admin/' unless ADMIN_URL moves it
 
     # The detector posts here (no trailing slash: it posts exactly this path).
     path('api/v1/detections', DetectionWebhookView.as_view(), name='detections'),

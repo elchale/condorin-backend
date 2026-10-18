@@ -87,6 +87,8 @@ class Member(BaseModel):
     position = models.CharField('cargo', max_length=120, blank=True)
     is_legal_representative = models.BooleanField('representante legal', default=False)
     active = models.BooleanField(default=True)
+    # Signed into every SPA session of this phone; "Salir" (POST /api/v1/auth/salir) bumps it, which ends them all.
+    session_version = models.PositiveIntegerField('versión de sesión', default=0, db_default=0, editable=False)
 
     class Meta:
         ordering = ['ong', 'full_name']

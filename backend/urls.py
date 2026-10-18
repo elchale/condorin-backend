@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django.urls import path
 
-from accounts.views import CodeView, EnterView, LinkEnterView, MeExpedienteView, MeIncidentsView, MeView
+from accounts.views import (
+    CodeView,
+    EnterView,
+    LinkEnterView,
+    MeExpedienteView,
+    MeIncidentsView,
+    MeView,
+    SignOutView,
+)
 from core.views import healthz, landing
 from detections.views import DetectionWebhookView
 from expedientes.views import EventoView, ExpedienteSendView, ExpedienteView
@@ -39,6 +47,7 @@ urlpatterns = [
     path('api/v1/auth/codigo', CodeView.as_view(), name='auth-code'),
     path('api/v1/auth/entrar', EnterView.as_view(), name='auth-enter'),
     path('api/v1/auth/enlace', LinkEnterView.as_view(), name='auth-link'),
+    path('api/v1/auth/salir', SignOutView.as_view(), name='auth-logout'),
     path('api/v1/me', MeView.as_view(), name='me'),
     path('api/v1/me/incidentes', MeIncidentsView.as_view(), name='me-incidents'),
     path('api/v1/me/incidentes/<int:image_id>/expediente', MeExpedienteView.as_view(), name='me-expediente'),

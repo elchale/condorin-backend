@@ -71,8 +71,8 @@ Built in 30 hours. These are the shortcuts we took on purpose, what each one ris
 
 ## API
 
-Sixteen routes: the webhook, the expediente (three plus the event page), four for the condorin.pe server, the public map,
-five for the browser sign in (map and static SPA), and the pages.
+Seventeen routes: the webhook, the expediente (three plus the event page), four for the condorin.pe server, the public map,
+six for the browser sign in (map and static SPA), and the pages.
 
 | Method | Path | Who | What |
 |---|---|---|---|
@@ -91,6 +91,7 @@ five for the browser sign in (map and static SPA), and the pages.
 | POST | `/api/v1/auth/entrar` | map SPA | `{"pending", "code"}` → `{"token", "member", "ong"}`. 5 attempts per code, 20 per phone and 30 per IP per hour. Records the sign in on `accounts_member` and joins the default ONG, like condorin.pe. |
 | POST | `/api/v1/auth/enlace` | SPA | `{"token": <alert token>}` → the same as `/auth/entrar` with `"via": "link"` and a 7 day session. Same rules and same 404 as `/api/v1/panel/enlace`. |
 | GET | `/api/v1/me` | map SPA | `Authorization: Bearer <token>`. Exactly the `/api/v1/panel` payload. |
+| POST | `/api/v1/auth/salir` | SPA | Same bearer. `{"signed_out": true}`. Ends every session of that phone on every device (bumps `session_version`); idempotent, a missing or dead session gets the same answer. |
 | POST | `/api/v1/me/incidentes/<id>/expediente` | map SPA | Same bearer. `{"token"}` like the panel route. |
 | GET | `/` and `/healthz/` | anyone | Landing page with the logo; liveness probe. |
 | | `/admin/` | staff | ONGs, members, rivers, authorities, detections, alerts, expedientes. |
@@ -117,7 +118,8 @@ and condorin.pe/panel uses the panel routes. The screens are in [`docs/EXPEDIENT
   cache, the DatabaseCache table `django_cache` (created by the `core` migration `0002_cache_table`), so the limits hold across
   every Cloud Run instance. The map and feed payloads, the clock row and the high volume throttles stay in the process cache
   `local` (`core/cache.py`, `core/throttling.py`). Error types: `code_invalid`, `code_expired`, `code_too_soon` (429),
-  `session_invalid` (401). Sessions carry `via` (`code` or `link`); a link session never finalizes a denuncia, because
+  `session_invalid` (401). Sessions also carry `v`, the phone's `session_version` (`ongs_member`, the highest of its rows):
+  `/auth/salir` bumps it, so every older token of that phone stops working. Tokens from before versions count as 0. Sessions carry `via` (`code` or `link`); a link session never finalizes a denuncia, because
   `/enviar` ignores the bearer and always asks for the WhatsApp code sent to that member.
 - **Browser calls.** The expediente, event, PDF, `/auth/*` and `/me*` routes answer condorin.pe and www.condorin.pe
   (preflight with `Authorization` and JSON bodies); `Content-Disposition` is exposed so the SPA can name the PDF.

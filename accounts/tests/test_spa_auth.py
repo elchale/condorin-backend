@@ -173,3 +173,33 @@ def test_me_pages_incidents_and_counts_them_all(client, ong, sent, post_detectio
 
     assert client.get('/api/v1/me/incidentes?page=9', **bearer).status_code == 404
     assert client.get('/api/v1/me/incidentes').status_code == 401
+
+
+def test_sign_out_ends_every_session_of_the_phone(client, ong):
+    laptop, phone = session.session_token('51936282808'), session.session_token('51936282808', 'link')
+    other = session.session_token('51999888777')
+    assert client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {laptop}').status_code == 200
+
+    resp = client.post('/api/v1/auth/salir', HTTP_AUTHORIZATION=f'Bearer {laptop}')
+    assert resp.status_code == 200 and resp.json() == {'signed_out': True}
+    for token in (laptop, phone):
+        me = client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {token}')
+        assert me.status_code == 401 and me.json()['type'] == 'session_invalid'
+    assert client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {other}').status_code == 200  # another phone
+
+    # Signing in again issues a token of the new version.
+    fresh = session.session_token('51936282808')
+    assert client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {fresh}').status_code == 200
+
+
+def test_sign_out_without_a_session_is_harmless(client, ong):
+    assert client.post('/api/v1/auth/salir').json() == {'signed_out': True}
+    assert client.post('/api/v1/auth/salir', HTTP_AUTHORIZATION='Bearer nonsense').status_code == 200
+
+
+def test_tokens_from_before_versions_still_work(client, ong):
+    """Sessions signed before session_version existed carry no `v`: they count as version 0."""
+    old = signing.TimestampSigner(salt=session.SESSION_SALT).sign_object({'p': '51936282808', 'via': 'code'})
+    assert client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {old}').status_code == 200
+    client.post('/api/v1/auth/salir', HTTP_AUTHORIZATION=f'Bearer {old}')
+    assert client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {old}').status_code == 401

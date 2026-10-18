@@ -7,6 +7,7 @@ GET   /api/v1/me?page=N                           Bearer → the GET /api/v1/pan
                                                   plus {"pagination": {"count", "next", "previous"}}
 GET   /api/v1/me/incidentes?page=N                Bearer → {"count", "next", "previous", "results"} ("Ver más")
 POST  /api/v1/me/incidentes/<id>/expediente       Bearer → {"token"} (the member's expediente link)
+POST  /api/v1/auth/salir                          Bearer → {"signed_out": true}; ends every session of that phone
 
 Browsers call these directly (the static SPA at condorin.pe and the map). A `link` session reads the panel
 and opens expedientes like any other, but finalizing a denuncia still needs the WhatsApp code sent to
@@ -38,11 +39,13 @@ from .session import (
     CODE_SECONDS,
     VIA_CODE,
     VIA_LINK,
+    bearer_session,
     code_digest,
     normalize_phone,
     pending_value,
     read_pending,
     require_session,
+    revoke_sessions,
     session_token,
 )
 
@@ -162,6 +165,18 @@ def _signed_in(member, via: str) -> dict:
         'member': {'name': member.full_name, 'phone': member.phone},
         'ong': {'name': member.ong.display_name},
     }
+
+
+class SignOutView(APIView):
+    """Ends every session of the signed in phone (all devices). Idempotent: without a valid session it only
+    answers the same, so the SPA can always clear its own copy."""
+    throttle_scope = 'me'
+
+    def post(self, request):
+        session = bearer_session(request)
+        if session is not None:
+            revoke_sessions(session[0])
+        return Response({'signed_out': True})
 
 
 class MeView(APIView):

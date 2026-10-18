@@ -14,6 +14,7 @@ import re
 
 from django.conf import settings
 from django.core import signing
+from django.db.models import Max
 from rest_framework import status
 
 from core.auth import bearer_token
@@ -61,13 +62,29 @@ def read_pending(value: str) -> dict:
     return data
 
 
+def session_version(phone: str) -> int:
+    """The current session version of a phone (the highest of its member rows); 0 when it has none."""
+    from ongs.models import Member
+
+    return Member.objects.filter(phone=phone).aggregate(v=Max('session_version'))['v'] or 0
+
+
+def revoke_sessions(phone: str) -> None:
+    """Ends every session of this phone, on every device: tokens signed with an older version stop working."""
+    from ongs.models import Member
+
+    Member.objects.filter(phone=phone).update(session_version=session_version(phone) + 1)
+
+
 def session_token(phone: str, via: str = VIA_CODE) -> str:
-    return signing.TimestampSigner(salt=SESSION_SALT).sign_object({'p': phone, 'via': via})
+    return signing.TimestampSigner(salt=SESSION_SALT).sign_object(
+        {'p': phone, 'via': via, 'v': session_version(phone)})
 
 
 def read_session(token: str) -> tuple[str, str] | None:
-    """(phone, via) for a valid session token; None when missing, forged or past its lifetime
-    (30 days for a code session, 7 for a link session)."""
+    """(phone, via) for a valid session token; None when missing, forged, past its lifetime (30 days for a
+    code session, 7 for a link session) or signed out (its version is older than the phone's). Tokens issued
+    before versions existed carry none and count as version 0, so they keep working until the first sign out."""
     signer = signing.TimestampSigner(salt=SESSION_SALT)
     try:
         data = signer.unsign_object(token, max_age=SESSION_SECONDS)
@@ -82,6 +99,9 @@ def read_session(token: str) -> tuple[str, str] | None:
         except signing.SignatureExpired:
             return None
     elif via != VIA_CODE:
+        return None
+    version = data.get('v', 0)
+    if not isinstance(version, int) or version != session_version(data['p']):
         return None
     return data['p'], via
 

@@ -1,4 +1,4 @@
-"""Submit the `condorin_alerta` UTILITY template to Meta for review.
+"""Submit the alert (WA_ALERT_TEMPLATE, `condorin_alerta_v2`) UTILITY template to Meta for review.
 
 Meta needs a sample image for an IMAGE header, uploaded through the Resumable Upload API of
 the app that owns the token. Without --submit it only prints what it would send.

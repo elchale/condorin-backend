@@ -24,12 +24,13 @@ def dragas(count: int) -> str:
     return '1 posible draga' if count == 1 else f'{count} posibles dragas'
 
 
-# UTILITY template. {{1}} first name, {{2}} what was seen, {{3}} river, {{4}} date, {{5}} coordinates.
+# UTILITY template condorin_alerta_v2, approved by Meta on 2026-10-17 (the first wording stayed in review).
+# {{1}} first name, {{2}} what was seen, {{3}} river, {{4}} date, {{5}} coordinates.
 # Body variables never open or close the text, as Meta requires.
 ALERT_BODY = (
-    'Hola {{1}}, Condorin detectó {{2}} en el río {{3}} en una imagen satelital del {{4}}. '
-    'La ubicación aproximada es {{5}}.\n\n'
-    'Con esta evidencia puedes preparar la denuncia en pocos minutos. Toca Crear expediente para empezar.'
+    'Hola {{1}}, tienes una nueva alerta de tu suscripción a Condorin: se registró {{2}} en el río {{3}}, '
+    'en la imagen satelital del {{4}}. Ubicación aproximada: {{5}}.\n\n'
+    'Revisa la evidencia y prepara el expediente desde el botón de abajo.'
 )
 ALERT_FOOTER = 'Condorin, monitoreo satelital de la Amazonía'
 ALERT_BUTTON_EXPEDIENTE = 'Crear expediente'

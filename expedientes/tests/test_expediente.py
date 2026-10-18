@@ -140,6 +140,28 @@ def test_whatsapp_code_confirms_and_emails_the_final_pdf(client, maria, sent, fi
     assert pdf.content.startswith(b'%PDF')
 
 
+def test_final_pdf_is_archived_in_the_bucket(client, maria, fixed_code, settings, monkeypatch):
+    from core import gcs
+    settings.GCS_EXPEDIENTES_BUCKET = 'condorin-expedientes'
+    uploads = []
+
+    def fake_upload(bucket, name, content, content_type):
+        uploads.append((bucket, name, content, content_type))
+        return '42'
+
+    monkeypatch.setattr(gcs, 'upload', fake_upload)
+    exp = finalize(client, maria, fixed_code).json()['expediente']
+    bucket, name, content, content_type = uploads[0]
+    assert name.startswith(f"expedientes/2026/{exp['folio']}-") and content.startswith(b'%PDF')
+    assert exp['pdf_gcs_uri'] == f'gs://{bucket}/{name}#42'
+
+
+def test_final_pdf_still_works_when_the_bucket_fails(client, maria, fixed_code, settings):
+    settings.GCS_EXPEDIENTES_BUCKET = 'condorin-expedientes'  # GCS is unreachable in tests
+    resp = finalize(client, maria, fixed_code)
+    assert resp.status_code == 200 and resp.json()['expediente']['pdf_gcs_uri'] == ''
+
+
 def test_code_from_one_member_does_not_work_for_another(client, alerts, fixed_code):
     maria, jose = alerts['51936282808'], alerts['51999888777']
     patch(client, maria, COMPLETE)

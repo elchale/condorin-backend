@@ -90,6 +90,8 @@ class Expediente(BaseModel):
     finalized_at = models.DateTimeField(null=True, blank=True)
     pdf = models.BinaryField(null=True, blank=True, editable=False)
     pdf_sha256 = models.CharField(max_length=64, blank=True)
+    # The same PDF archived in GCS_EXPEDIENTES_BUCKET as gs://bucket/object#generation; blank if it could not be.
+    pdf_gcs_uri = models.CharField('PDF en Cloud Storage', max_length=1100, blank=True)
 
     # Pending WhatsApp confirmation code (HMAC of the code, never the code itself).
     code_hash = models.CharField(max_length=64, blank=True)

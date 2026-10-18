@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'ongs',
     'detections',
     'expedientes',
+    'panel',
 ]
 
 MIDDLEWARE = [
@@ -129,6 +130,8 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'expediente': '120/minute',
         'expediente_send': '30/hour',
+        'panel': '600/minute',
+        'panel_link': '60/minute',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.envelope_exception_handler',
 }

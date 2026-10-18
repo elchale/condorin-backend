@@ -1,4 +1,4 @@
-"""Read only access to the detector buckets: pin evidence versions, hash crops, sign links."""
+"""Access to Cloud Storage: pin evidence versions, hash crops, sign links, archive the final PDFs."""
 import base64
 import json
 import logging
@@ -75,6 +75,18 @@ def download(bucket: str, name: str, generation: str | None = None) -> tuple[byt
         if blob.size and blob.size > MAX_CROP_BYTES:
             raise StorageUnavailable(f'{name} is {blob.size} bytes, too large to download')
         return blob.download_as_bytes(), str(blob.generation)
+    except StorageUnavailable:
+        raise
+    except Exception as exc:
+        raise StorageUnavailable(str(exc)) from exc
+
+
+def upload(bucket: str, name: str, content: bytes, content_type: str) -> str:
+    """Creates the object (never overwrites one) and returns its generation."""
+    try:
+        blob = _blob(bucket, name)
+        blob.upload_from_string(content, content_type=content_type, if_generation_match=0)
+        return str(blob.generation)
     except StorageUnavailable:
         raise
     except Exception as exc:

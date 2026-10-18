@@ -90,6 +90,8 @@ class Alert(BaseModel):
         PENDING = 'pending', 'Pendiente'
         SENT = 'sent', 'Enviada'
         FAILED = 'failed', 'Falló'
+        # Opened from the condorin.pe panel by a member who got no WhatsApp alert; never sent.
+        PANEL = 'panel', 'Abierta desde el panel'
 
     image = models.ForeignKey(SatelliteImage, on_delete=models.CASCADE, related_name='alerts')
     member = models.ForeignKey('ongs.Member', on_delete=models.CASCADE, related_name='alerts')

@@ -48,7 +48,7 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
 
 ## API
 
-Six routes in total. Only the three under `/api/v1` are the product.
+Nine routes in total: three for the expediente, three for the condorin.pe server, the webhook, and the pages.
 
 | Method | Path | Who | What |
 |---|---|---|---|
@@ -56,6 +56,9 @@ Six routes in total. Only the three under `/api/v1` are the product.
 | GET | `/api/v1/expedientes/<token>` | ONG member | Opens (and on first tap creates) the expediente, with everything the page needs. `?formato=pdf` returns the PDF. |
 | PATCH | `/api/v1/expedientes/<token>` | ONG member | Any subset of the fields (autosave), `authorities: [codes]`, `filings: [{authority, receipt_number, filed_at}]`, `reopen: true`. |
 | POST | `/api/v1/expedientes/<token>/enviar` | ONG member | `{}` checks completeness and sends the code (202). `{"code": "123456"}` finalizes and emails (200). |
+| GET | `/api/v1/panel` | condorin.pe server | `Authorization: Bearer <PANEL_API_SECRET>`, `X-Condorin-Phone`. The member, their ONG and its incidents with the next action. Joins the default ONG on first call (demo only). |
+| POST | `/api/v1/panel/incidentes/<id>/expediente` | condorin.pe server | Same headers. The member's personal expediente token for that incident, created if they had no alert. |
+| POST | `/api/v1/panel/enlace` | condorin.pe server | `{"token"}` → the member a WhatsApp alert link may sign in (sent, under `LINK_SIGN_IN_DAYS`), else 404. |
 | GET | `/` and `/healthz/` | anyone | Landing page with the logo; liveness probe. |
 | | `/admin/` | staff | ONGs, members, rivers, authorities, detections, alerts, expedientes. |
 
@@ -64,7 +67,26 @@ Errors always come back as `{"message", "type", "field_errors"}`. With a 400 fro
 should handle: `link_expired` (410), `code_invalid`, `code_expired`, `code_too_soon` (429),
 `expediente_locked` (409), `whatsapp_error` (502).
 
-The frontend is not connected yet. The expected screens are in [`docs/EXPEDIENTE_UX.md`](docs/EXPEDIENTE_UX.md).
+The frontend is connected: condorin.pe/expediente/<token> calls these routes through its own `/api/expedientes` proxy,
+and condorin.pe/panel uses the panel routes. The screens are in [`docs/EXPEDIENTE_UX.md`](docs/EXPEDIENTE_UX.md).
+
+### Signing in from the WhatsApp link
+
+The alert button opens condorin.pe/expediente/<token> and the member is signed in without a code:
+
+- The token is 192 random bits, one per member and image, and only reached that member's WhatsApp chat.
+- The browser posts it to condorin.pe/api/enlace (link preview bots do not run JS, so they never sign in).
+  That route checks the origin and asks `/api/v1/panel/enlace` with the shared secret. Only alerts WhatsApp
+  delivered, within `LINK_SIGN_IN_DAYS` (7) of delivery, sign in. Anything else gets the same 404.
+- The session lasts 7 days (30 with a code), and an existing session is never replaced by a link.
+- The page sends `Referrer-Policy: no-referrer` and is not indexed. Confirming the denuncia still needs a fresh WhatsApp code.
+
+### Evidence and PDFs in Cloud Storage
+
+The service account in `GCS_CREDENTIALS_JSON` reads the scenes and crops the detector writes (to pin hashes
+and sign links) and creates objects in `GCS_EXPEDIENTES_BUCKET`, where each final PDF is archived as
+`expedientes/<year>/<folio>-<sha256 prefix>.pdf`, never overwritten. The database keeps its own copy,
+so a failed upload never blocks a denuncia.
 
 ## Local setup
 

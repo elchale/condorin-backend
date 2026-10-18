@@ -112,6 +112,7 @@ def expediente_payload(expediente: Expediente, alert) -> dict:
             'finalized_by': expediente.finalized_by.full_name if expediente.finalized_by else None,
             'pdf_url': f'https://{settings.DOMAIN}{pdf_path}',
             'pdf_sha256': expediente.pdf_sha256,
+            'pdf_gcs_uri': expediente.pdf_gcs_uri,
         },
         'incident': {
             'river': {

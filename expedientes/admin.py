@@ -21,7 +21,7 @@ class ExpedienteAdmin(admin.ModelAdmin):
     list_filter = ['status', 'ong']
     search_fields = ['folio', 'ong__name']
     exclude = ['code_hash', 'code_member', 'code_expires_at', 'code_attempts']
-    readonly_fields = ['image', 'ong', 'folio', 'finalized_by', 'finalized_at', 'pdf_sha256',
+    readonly_fields = ['image', 'ong', 'folio', 'finalized_by', 'finalized_at', 'pdf_sha256', 'pdf_gcs_uri',
                        'created_by', 'updated_by']
     filter_horizontal = ['authorities']
     inlines = [FilingInline]

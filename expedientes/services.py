@@ -2,10 +2,12 @@
 import hashlib
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
+from core import gcs
 from core.exceptions import BaseError
 from detections.models import Alert
 
@@ -142,6 +144,8 @@ def _remember(expediente: Expediente, member, data: dict) -> None:
     """Copy what the person typed back to their profile and the ONG, so next time it is prefilled."""
     if expediente.rep_phone == member.phone:
         _copy(member, MEMBER_FIELDS, data, only_empty=False)
+        # People who joined from condorin.pe have no name yet; the first one they sign with becomes it.
+        _copy(member, {'rep_name': 'full_name'}, data, only_empty=True)
     _copy(member.ong, ONG_FIELDS, data, only_empty=True)
 
 
@@ -155,6 +159,21 @@ def _copy(target, mapping: dict, data: dict, only_empty: bool) -> None:
         target.save(update_fields=changed + ['updated'])
 
 
+def archive_pdf(expediente: Expediente) -> str:
+    """Stores the final PDF in the expedientes bucket. Every confirmation gets its own object, named by
+    folio and hash, so a reopened and reconfirmed expediente never overwrites the earlier version."""
+    bucket = settings.GCS_EXPEDIENTES_BUCKET
+    if not bucket:
+        return ''
+    name = f'expedientes/{expediente.finalized_at:%Y}/{expediente.folio}-{expediente.pdf_sha256[:16]}.pdf'
+    try:
+        generation = gcs.upload(bucket, name, bytes(expediente.pdf), 'application/pdf')
+    except gcs.StorageUnavailable as exc:
+        logger.warning('expediente %s: could not archive the PDF in GCS: %s', expediente.pk, exc)
+        return ''
+    return f'gs://{bucket}/{name}#{generation}'
+
+
 @transaction.atomic
 def finalize(expediente: Expediente, member) -> Expediente:
     from .pdf import build_pdf
@@ -166,6 +185,7 @@ def finalize(expediente: Expediente, member) -> Expediente:
         expediente.folio = f'CND-{expediente.finalized_at:%Y}-{expediente.pk:05d}'
     expediente.pdf = build_pdf(expediente, final=True)
     expediente.pdf_sha256 = hashlib.sha256(expediente.pdf).hexdigest()
+    expediente.pdf_gcs_uri = archive_pdf(expediente)
     expediente.updated_by = member
     expediente.save()
     return expediente

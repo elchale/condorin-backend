@@ -44,7 +44,13 @@ already knows.
 Errors: `link_expired` → a friendly page ("Pide a tu ONG que te reenvíe la alerta"). 404 → "Revisa que
 el enlace esté completo".
 
-## Dashboard (later, no endpoints yet)
+## Panel (condorin.pe/panel)
+
+After signing in with the WhatsApp code, or by opening an alert link, the member lands on /panel: the ONG's
+incidents with the evidence crops and one action each (Crear expediente, Continuar, Presentar a las
+autoridades, Ver expediente). Every action opens this same expediente page with the member's own token.
+
+## Time replay dashboard (later, no endpoints yet)
 
 The frontend will get a dashboard that replays detections over a chosen time range (a "simular tiempo"
 slider). It will show alerts going out, expedientes moving from draft to filed, and rivers on a map.

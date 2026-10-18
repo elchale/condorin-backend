@@ -9,6 +9,7 @@ WA_SEND_ENABLED = False
 ALERTS_INLINE = True
 EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
 GCS_CREDENTIALS_JSON = ''
+GCS_EXPEDIENTES_BUCKET = ''
 STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
     'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},

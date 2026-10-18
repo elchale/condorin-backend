@@ -34,6 +34,8 @@ WA_SEND_ENABLED = env.bool('WA_SEND_ENABLED', default=bool(WA_TOKEN))
 # Without it, Application Default Credentials are used.
 GCS_CREDENTIALS_JSON = env('GCS_CREDENTIALS_JSON', default='')
 GCS_PROJECT_ID = env('GCS_PROJECT_ID', default='')
+# Where each final expediente PDF is archived (one immutable object per confirmation). Empty: only the database copy.
+GCS_EXPEDIENTES_BUCKET = env('GCS_EXPEDIENTES_BUCKET', default='')
 # Lifetime of the evidence links the frontend shows and the WhatsApp header image.
 GCS_SIGNED_URL_MINUTES = env.int('GCS_SIGNED_URL_MINUTES', default=60)
 
@@ -52,3 +54,13 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_TIMEOUT = env.int('EMAIL_TIMEOUT', default=15)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Condorin <info@qolca.org>')
+
+# The condorin.pe server calls the /api/v1/panel routes with this secret and the signed in member's
+# phone (X-Condorin-Phone). Browsers never see it. Empty turns the panel routes off.
+PANEL_API_SECRET = env('PANEL_API_SECRET', default='')
+# How long after an alert its WhatsApp link may also sign the member in on condorin.pe.
+# The link keeps opening the expediente for ALERT_LINK_DAYS; after this window it just stops signing in.
+LINK_SIGN_IN_DAYS = env.int('LINK_SIGN_IN_DAYS', default=7)
+# TODO: demo only. Everyone who signs in on condorin.pe joins this ONG (empty: the oldest active ONG).
+# Replace with real ONG invitations before going past the demo.
+DEFAULT_ONG_ID = env.int('DEFAULT_ONG_ID', default=0)

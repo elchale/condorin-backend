@@ -108,10 +108,15 @@ def incident_payload(image) -> dict:
             'size_bytes': image.size_bytes,
             'download_url': gcs.signed_url(image.bucket, image.object_name, image.generation,
                                            download_as=image.object_name.rsplit('/', 1)[-1]),
+            # Shown in the page with every detection boxed; bbox is [x, y, width, height] in scene pixels.
+            'preview_url': gcs.signed_url(image.bucket, image.object_name, image.generation),
+            'boxes': [{'bbox': d.bbox, 'confidence': round(d.confidence, 3),
+                       'alerting': d.confidence >= settings.ALERT_MIN_CONFIDENCE} for d in image.detections.all()],
         },
         'history': [
             {'captured_at': h.captured_at, 'label': fecha_corta(h.captured_at), 'satellite': h.satellite,
-             'detections': h.alerting_detections().count()}
+             'detections': h.alerting_detections().count(),
+             'preview_url': gcs.signed_url(h.bucket, h.object_name, h.generation)}
             for h in earlier_sightings(image)
         ],
     }

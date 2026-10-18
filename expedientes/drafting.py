@@ -64,7 +64,8 @@ def draft_facts(image: SatelliteImage) -> str:
         dates = ', '.join(fecha_corta(h.captured_at) for h in history[:5])
         paragraphs.append(
             f'3. En la misma zona, a menos de {HISTORY_RADIUS_KM:g} km, Condorin registró detecciones en '
-            f'{len(history)} imágenes anteriores ({dates}), lo que indica una actividad sostenida.'
+            + ('1 imagen anterior' if len(history) == 1 else f'{len(history)} imágenes anteriores')
+            + f' ({dates}), lo que indica una actividad sostenida.'
         )
     paragraphs.append(
         f'{len(paragraphs) + 1}. El uso de dragas y artefactos similares en los ríos está prohibido por el '

@@ -70,7 +70,10 @@ def visible(queryset, field: str = 'captured_at'):
     return queryset.filter(**{f'{field}__lte': now()})
 
 
-def iso(value: datetime) -> str:
+def iso(value: datetime | None) -> str | None:
+    """ISO 8601 in UTC to the second, with Z: '2026-10-18T03:00:00Z'. None stays None."""
+    if value is None:
+        return None
     return value.astimezone(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
 
 

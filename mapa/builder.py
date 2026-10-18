@@ -7,7 +7,7 @@ About eight queries whatever the size of the data: rivers, images, detections, a
 expedientes are each read once as plain values and joined in Python.
 """
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import datetime
 
 from django.conf import settings
 from django.db.models import Count, Max, Min, Q
@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from accounts.models import Member as SiteUser
 from core import clock
+from core.clock import iso
 from detections.models import Alert, Detection, SatelliteImage
 from expedientes.models import Expediente
 from ongs.models import Member, Ong, River
@@ -42,12 +43,6 @@ RIVER_FALLBACK = {
 
 # Peruvian Amazon, used when there is nothing to frame yet: [minLon, minLat, maxLon, maxLat].
 DEFAULT_BBOX = [-78.5, -14.5, -68.5, -0.5]
-
-
-def iso(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.astimezone(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
 
 
 def plural(n: int, one: str, many: str) -> str:

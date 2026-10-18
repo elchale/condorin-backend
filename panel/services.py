@@ -9,7 +9,6 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from core import clock, gcs
 from core.exceptions import BaseError
 from detections.models import Alert, Detection, SatelliteImage, default_expiry
-from expedientes.autodraft import status_label  # noqa: F401  (the panel and the activity feed label)
 from expedientes.models import Expediente
 from expedientes.services import missing_fields
 from ongs.models import Member, Ong

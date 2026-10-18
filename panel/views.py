@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from core import clock
 from core.geo import coord, maps_url, utm
 from detections.text import fecha_larga
+from expedientes.autodraft import status_label
 from expedientes.drafting import place_sentence
 
 from .activity import activity_feed, parse_limit
@@ -26,7 +27,6 @@ from .services import (
     missing_count,
     open_from_panel,
     sign_in_by_link,
-    status_label,
 )
 
 # How many crops of one scene the panel card shows.

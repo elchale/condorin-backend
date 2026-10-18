@@ -17,7 +17,9 @@ from django.conf import settings
 from django.core import signing
 from rest_framework import status
 
+from core.auth import bearer_token
 from core.exceptions import BaseError
+from core.phone import PHONE_RE
 
 PENDING_SALT = 'otp-pending'
 SESSION_SALT = 'session'
@@ -30,9 +32,6 @@ LINK_SESSION_SECONDS = 7 * 24 * 60 * 60
 # fresh WhatsApp code (expedientes.codes), whatever the session.
 VIA_CODE = 'code'
 VIA_LINK = 'link'
-
-PHONE_RE = re.compile(r'^\d{10,15}$')
-
 
 class SessionInvalid(BaseError):
     status_code = status.HTTP_401_UNAUTHORIZED
@@ -90,10 +89,8 @@ def read_session(token: str) -> tuple[str, str] | None:
 
 def bearer_session(request) -> tuple[str, str] | None:
     """(phone, via) behind `Authorization: Bearer <session>`, or None when absent or invalid."""
-    scheme, _, token = request.headers.get('Authorization', '').partition(' ')
-    if scheme.lower() != 'bearer' or not token.strip():
-        return None
-    return read_session(token.strip())
+    token = bearer_token(request)
+    return read_session(token) if token else None
 
 
 def bearer_phone(request) -> str | None:

@@ -3,8 +3,8 @@ from django.core.validators import RegexValidator
 from django.db import models
 
 from core.models import BaseModel
+from core.phone import phone_validator
 
-phone_validator = RegexValidator(r'^\d{10,15}$', 'Solo dígitos con código de país, por ejemplo 51987654321.')
 ruc_validator = RegexValidator(r'^\d{11}$', 'El RUC tiene 11 dígitos.')
 dni_validator = RegexValidator(r'^\d{8}$', 'El DNI tiene 8 dígitos.')
 

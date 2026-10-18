@@ -28,8 +28,8 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
          files it on the FEMA and OEFA forms, types the receipt number ──PATCH──▶ status filed
 ```
 
-- **Hackathon limits (`detections/limits.py`).** Only scenes captured today or yesterday (Lima) alert, overriding `ALERT_RECENT_DAYS`, and at most 50 WhatsApp alerts are ever sent (status `sent`); the rest become `capped`, are never retried, and the webhook answers `reason: capped`. The welcome also stops once the cap is used up.
-- **TODO(prod):** remove `HACKATHON_ALERT_WINDOW_DAYS` and `HACKATHON_MAX_ALERT_MESSAGES` before real production.
+- **Hackathon limits (`detections/limits.py`).** Only scenes captured today or yesterday (Lima) alert, overriding `ALERT_RECENT_DAYS`, and at most 50 WhatsApp alerts are ever sent (status `sent`); the rest become `capped`, are never retried, and the webhook answers `reason: capped`. The welcome also stops once the cap is used up. Only alerts sent from `HACKATHON_CAP_SINCE` count (the cap was reset before the live demo).
+- **TODO(prod):** remove `HACKATHON_ALERT_WINDOW_DAYS`, `HACKATHON_MAX_ALERT_MESSAGES` and `HACKATHON_CAP_SINCE` before real production.
 - **Who is alerted, and when.** Only a scene captured within `ALERT_RECENT_DAYS` (default 7) alerts, at
   once, on commit. Recipients: every active member of every active ONG watching the river, plus every
   active admin (`accounts_admin`) with a `phone` (`manage.py set_admin_phone <email> <phone>`). Admins sit in
@@ -54,6 +54,20 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
   SERNANP is added when the river is inside a protected area. None of them publishes an email for
   complaints, so the PDF is emailed to the ONG with step by step links. An authority gets it by email
   only if an admin enters a confirmed address.
+
+## Known shortcuts
+
+Built in 30 hours. These are the shortcuts we took on purpose, what each one risks, and how production replaces it.
+
+| Shortcut | Where | Risk | In production |
+|---|---|---|---|
+| Hackathon alert window (today or yesterday) and a cap of 50 WhatsApp alerts | `detections/limits.py` | A real scene older than yesterday alerts nobody | Delete the limits; `ALERT_RECENT_DAYS` and Meta's own quality rating take over |
+| Everyone who signs in joins the default ONG | `panel.services.default_ong` | Anyone with a phone sees that ONG's incidents | Invitations sent by each ONG's admin, one member per invitation |
+| Alerts are sent on a thread after the webhook answers | `detections.services.dispatch` | On Cloud Run with request based CPU the thread can stall; `manage.py send_pending_alerts` retries | `ALERTS_INLINE=True` or Cloud Tasks, plus CPU always allocated |
+| Code attempts and resend locks live in the instance cache | `accounts/views.py` | With several instances a guesser gets more tries per code | Shared cache (Redis or the database cache) |
+| An unknown river slug from the detector is created, not rejected | `detections.services.ingest` | A typo stores a scene nobody watches (the webhook answers `no_recipients`) | Kept: a new river must be stored; an admin assigns ONGs to it |
+| The detector runs when someone calls its trigger, not on every upload | detector repo, `POST /procesar` | A forgotten call means no scene | Kept: bucket events fire per file with no "upload finished" signal; a scheduler calls the trigger after each satellite pass |
+| Demo clock | `core/clock.py`, `manage.py set_today` | A wrong day hides scenes or replays alerts | Only for demos; `set_today --real` |
 
 ## API
 

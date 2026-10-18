@@ -223,7 +223,7 @@ def _alerts(skip, alerts) -> dict:
     whatsapp = [a for a in alerts if a.status != Alert.Status.PANEL]
     sent = [a for a in whatsapp if a.status == Alert.Status.SENT]
     failed = sum(a.status == Alert.Status.FAILED for a in whatsapp)
-    queued = sum(a.status == Alert.Status.PENDING for a in whatsapp)
+    queued = sum(a.status in (Alert.Status.PENDING, Alert.Status.SENDING) for a in whatsapp)
     if sent:
         detail = f'{len(sent)} {"alerta enviada" if len(sent) == 1 else "alertas enviadas"} por WhatsApp'
         if failed:

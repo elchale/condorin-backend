@@ -62,6 +62,10 @@ GCS_EXPEDIENTES_BUCKET = env('GCS_EXPEDIENTES_BUCKET', default='')
 # Lifetime of the evidence links the frontend shows and the WhatsApp header image.
 GCS_SIGNED_URL_MINUTES = env.int('GCS_SIGNED_URL_MINUTES', default=60)
 
+# An alert claimed for sending (status `sending`) longer ago than this was abandoned by a dead process;
+# the retries (send_pending_alerts, the next dispatch) may claim it again.
+ALERT_SENDING_STALE_MINUTES = env.int('ALERT_SENDING_STALE_MINUTES', default=10)
+
 # Send alerts in the request thread instead of a background thread (tests, one off scripts).
 ALERTS_INLINE = env.bool('ALERTS_INLINE', default=False)
 

@@ -8,9 +8,13 @@ status SENT across the whole database (members and admins alike); None removes t
 from datetime import datetime, time, timedelta
 
 from django.conf import settings
+from django.db import connection
 from django.utils import timezone
 
-from .models import Alert
+from .models import Alert, sending_stale_before
+
+# Any 64 bit number, the same in every instance: the Postgres advisory lock that serializes the cap check.
+CAP_LOCK_ID = 7_301_018_001
 
 
 def _since(text: str | None) -> datetime | None:
@@ -59,6 +63,21 @@ def sent_count() -> int:
     return sent.count()
 
 
-def cap_reached() -> bool:
+def in_flight_count() -> int:
+    """Alerts claimed by a sender right now (status `sending`, not stale): they take a slot of the cap."""
+    return Alert.objects.filter(status=Alert.Status.SENDING, updated__gte=sending_stale_before()).count()
+
+
+def cap_reached(include_in_flight: bool = False) -> bool:
     cap = HACKATHON_MAX_ALERT_MESSAGES
-    return cap is not None and sent_count() >= cap
+    if cap is None:
+        return False
+    return sent_count() + (in_flight_count() if include_in_flight else 0) >= cap
+
+
+def lock_cap() -> None:
+    """Serializes the cap check and the claim across threads, instances and commands until the transaction
+    ends (pg_advisory_xact_lock, which works behind Neon's transaction pooler). Call it in transaction.atomic."""
+    if connection.vendor == 'postgresql':  # the API always runs on Postgres
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT pg_advisory_xact_lock(%s)', [CAP_LOCK_ID])

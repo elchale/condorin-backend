@@ -202,9 +202,10 @@ evidence still records the URIs, but the hashes and signed links stay empty.
 
 The hechos of a new expediente are written by `expedientes/drafting.py` from the detection. With
 `EXPEDIENTE_IA_ENABLED=True` and an `ANTHROPIC_API_KEY`, that draft goes once through Claude
-(`expedientes/redaccion.py`, LangChain, model `EXPEDIENTE_IA_MODEL`, default `claude-opus-5-5`) and the
-member sees the rewritten version. The flag is off by default; if the call fails, the deterministic
-draft is kept and the expediente still opens.
+(`expedientes/redaccion.py`, LangChain, model `EXPEDIENTE_IA_MODEL`, default `claude-opus-5-5`) after the
+expediente is committed, on a thread (`expedientes.services.improve_later`), so no transaction waits on Claude. The
+expediente is stored and shown with the deterministic draft first; the rewrite replaces it only while nobody edited
+the hechos. The flag is off by default; if the call fails, the deterministic draft is kept.
 
 ## Shared database
 

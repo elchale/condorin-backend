@@ -24,7 +24,7 @@ def dragas(count: int) -> str:
     return '1 posible draga' if count == 1 else f'{count} posibles dragas'
 
 
-# UTILITY template condorin_alerta_v2, approved by Meta on 2026-10-17 (the first wording stayed in review).
+# UTILITY templates condorin_alerta_v2 and condorin_evento share this body (approved 2026-10-17).
 # {{1}} first name, {{2}} what was seen, {{3}} river, {{4}} date, {{5}} coordinates.
 # Body variables never open or close the text, as Meta requires.
 ALERT_BODY = (

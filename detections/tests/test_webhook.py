@@ -30,12 +30,12 @@ def test_alerts_every_member_of_the_ong(post_detection, payload, ong, sent):
 
     assert {phone for phone, _, _ in sent} == {'51936282808', '51999888777'}
     phone, template, components = next(c for c in sent if c[0] == '51936282808')
-    assert template == 'condorin_alerta_v2'
+    assert template == 'condorin_evento'
     body = [p['text'] for p in components[1]['parameters']]
     assert body == ['María', '1 posible draga', 'Yaguas', '15 de octubre de 2026 a las 05:42', '-2.7706, -70.9512']
     alert = Alert.objects.get(member__phone=phone)
     assert components[2]['parameters'][0]['text'] == alert.token
-    assert components[3]['parameters'][0]['text'] == '-2.7706,-70.9512'
+    assert components[3]['parameters'][0]['text'] == alert.token  # Ver evento
     assert alert.status == Alert.Status.SENT and alert.wa_message_id
 
 

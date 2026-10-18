@@ -20,7 +20,7 @@ WA_TOKEN = env('WA_TOKEN', default='')
 WA_PHONE_NUMBER_ID = env('WA_PHONE_NUMBER_ID', default='')
 WA_WABA_ID = env('WA_WABA_ID', default='')
 # UTILITY template with an image header and two URL buttons (see `manage.py create_alert_template`).
-WA_ALERT_TEMPLATE = env('WA_ALERT_TEMPLATE', default='condorin_alerta_v2')
+WA_ALERT_TEMPLATE = env('WA_ALERT_TEMPLATE', default='condorin_evento')
 # Approved AUTHENTICATION template used to confirm the person before an expediente is sent.
 WA_CODE_TEMPLATE = env('WA_CODE_TEMPLATE', default='condorin_codigo')
 WA_TEMPLATE_LANG = env('WA_TEMPLATE_LANG', default='es')

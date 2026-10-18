@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Never push a red main: CI would skip the deploy and mail a failure. Enable once per clone with
+#   git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh"

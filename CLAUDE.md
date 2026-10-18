@@ -21,3 +21,4 @@ Ojo de Cóndor API (api.condorin.pe). Read README.md first. It has the flow, the
 - The repo is public: no secrets, keep `.env.template` and the README current.
 - The WhatsApp body in `detections/text.py` must match the approved template exactly. Changing it means submitting a new template.
 - Tests: `pytest` (offline: GCS is unreachable and WhatsApp is captured, see `conftest.py`). Lint: `ruff check .`.
+- Never push a red main: CI skips the Cloud Run deploy and mails a failure. `scripts/check.sh` runs what CI runs (ruff, checks, pytest) on a throwaway Postgres in Docker in about a minute (pytest on Neon takes many minutes); the `.githooks/pre-push` hook runs it on every push once `git config core.hooksPath .githooks` is set. Docker Desktop must be running. Do not use `--no-verify`.

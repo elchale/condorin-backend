@@ -158,7 +158,7 @@ def fill_sent(n: int, river) -> None:
     filler = Ong.objects.create(name='Relleno', short_name='Relleno', ruc='20999999999')
     for i in range(n):
         member = Member.objects.create(ong=filler, full_name=f'M{i}', phone=f'5190100{i:04d}')
-        Alert.objects.create(image=other, member=member, status=Alert.Status.SENT)
+        Alert.objects.create(image=other, member=member, status=Alert.Status.SENT, sent_at=timezone.now())
 
 
 def test_cap_lets_the_50th_out_and_caps_the_51st(post_detection, payload, ong, sent, river):
@@ -201,3 +201,10 @@ def test_cap_stops_the_welcome_too(settings, sent, river):
     fill_sent(limits.HACKATHON_MAX_ALERT_MESSAGES, river)
     send_welcome('51955555555')
     assert not sent
+
+
+def test_alerts_sent_before_the_cap_reset_do_not_count(river):
+    fill_sent(limits.HACKATHON_MAX_ALERT_MESSAGES, river)
+    assert limits.cap_reached()
+    Alert.objects.update(sent_at=limits.HACKATHON_CAP_SINCE - timedelta(minutes=1))
+    assert limits.sent_count() == 0 and not limits.cap_reached()

@@ -17,6 +17,8 @@ from .models import Alert
 HACKATHON_ALERT_WINDOW_DAYS = 2
 # Once this many WhatsApp alerts have been sent in total, no further alert goes out.
 HACKATHON_MAX_ALERT_MESSAGES = 50
+# Only alerts sent from this instant count toward the cap (reset before the live demo). None counts every alert.
+HACKATHON_CAP_SINCE = datetime(2026, 10, 18, 7, 50, tzinfo=timezone.get_fixed_timezone(-300))
 
 CAPPED_ERROR = f'Límite de {HACKATHON_MAX_ALERT_MESSAGES} mensajes del hackathon alcanzado'
 
@@ -40,7 +42,10 @@ def window_label() -> str:
 
 
 def sent_count() -> int:
-    return Alert.objects.filter(status=Alert.Status.SENT).count()
+    sent = Alert.objects.filter(status=Alert.Status.SENT)
+    if HACKATHON_CAP_SINCE is not None:
+        sent = sent.filter(sent_at__gte=HACKATHON_CAP_SINCE)
+    return sent.count()
 
 
 def cap_reached() -> bool:

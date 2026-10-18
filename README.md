@@ -160,6 +160,12 @@ gcloud run deploy condorin-api --source . --region $REGION --allow-unauthenticat
   --set-secrets DJANGO_SECRET_KEY=DJANGO_SECRET_KEY:latest,DATABASE_URL=DATABASE_URL:latest,WA_TOKEN=WA_TOKEN:latest,DETECTIONS_SHARED_SECRET=DETECTIONS_SHARED_SECRET:latest,GCS_CREDENTIALS_JSON=GCS_CREDENTIALS_JSON:latest,EMAIL_HOST_PASSWORD=EMAIL_HOST_PASSWORD:latest
 ```
 
+- **Continuous deploy**: after the first deploy, every push to `main` that passes Ruff and pytest ships
+  through the `deploy` job in `.github/workflows/ci.yml`. It builds the image, pushes it to Artifact
+  Registry and points the service at it, so env vars and secrets set on the service are kept. GitHub signs
+  in as the `github-deployer` service account, whose JSON key is the `GCP_SA_KEY` repository secret. It
+  only holds `roles/run.developer`, `roles/artifactregistry.writer` on the repository and
+  `roles/iam.serviceAccountUser` on the runtime service account.
 - **`--no-cpu-throttling` is required.** Alerts go out on a thread after the webhook responds, and by
   default Cloud Run stops giving CPU to an instance once its response is sent. `--min-instances 1` keeps
   one warm, and 1Gi leaves room for two workers rendering PDFs.

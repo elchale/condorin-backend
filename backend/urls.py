@@ -10,7 +10,7 @@ from accounts.views import (
     MeView,
     SignOutView,
 )
-from core.views import healthz, landing
+from core.views import healthz, landing, readyz
 from detections.views import DetectionWebhookView
 from expedientes.views import EventoView, ExpedienteSendView, ExpedienteView
 from fuentes.views import FuentesRefreshView, FuentesView
@@ -23,6 +23,7 @@ admin.site.site_title = 'Ojo de Cóndor'
 urlpatterns = [
     path('', landing, name='landing'),
     path('healthz/', healthz, name='healthz'),
+    path('readyz/', readyz, name='readyz'),
     path('admin/', admin.site.urls),
 
     # The detector posts here (no trailing slash: it posts exactly this path).

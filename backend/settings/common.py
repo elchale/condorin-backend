@@ -183,7 +183,7 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = env('SECURE_SSL_REDIRECT', default=True)
     # The health probe comes from inside the platform over plain HTTP.
-    SECURE_REDIRECT_EXEMPT = [r'^healthz/$']
+    SECURE_REDIRECT_EXEMPT = [r'^healthz/$', r'^readyz/$']
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000

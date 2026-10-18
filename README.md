@@ -92,7 +92,7 @@ six for the browser sign in (map and static SPA), and the pages.
 | GET | `/api/v1/me` | map SPA | `Authorization: Bearer <token>`. Exactly the `/api/v1/panel` payload. |
 | POST | `/api/v1/auth/salir` | SPA | Same bearer. `{"signed_out": true}`. Ends every session of that phone on every device (bumps `session_version`); idempotent, a missing or dead session gets the same answer. |
 | POST | `/api/v1/me/incidentes/<id>/expediente` | map SPA | Same bearer. `{"token"}` like the panel route. |
-| GET | `/` and `/healthz/` | anyone | Landing page with the logo; liveness probe. |
+| GET | `/`, `/healthz/` and `/readyz/` | anyone | Landing page with the logo; liveness probe (the process is up); readiness probe (`SELECT 1` on the database, 503 when it does not answer). |
 | | `/admin/` | staff | ONGs, members, rivers, authorities, detections, alerts, expedientes. |
 
 Errors always come back as `{"message", "type", "field_errors"}`. With a 400 from `/enviar`,
@@ -220,8 +220,9 @@ changes them, update that mapping and run `npx prisma generate`.
 `manage.py import_prisma_backup <file.json>` loads admins and members from a JSON backup of the old
 Prisma tables. That is how the users were carried over on 2026-10-17. The backup stays outside the repo.
 
-Tests never touch production rows. pytest creates a separate `test_condorin` database on the same
-server and drops it at the end.
+Tests never touch production rows. pytest creates a separate `test_condorin` database on the server of
+`DATABASE_URL` and drops it at the end, and `backend/test_settings.py` refuses to load when that server is Neon:
+run `scripts/check.sh` (a throwaway Postgres in Docker) or point `DATABASE_URL` at a local Postgres.
 
 ## Deploy
 

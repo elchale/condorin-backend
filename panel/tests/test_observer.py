@@ -19,6 +19,7 @@ NEWCOMER = '51911222333'
 def _secret(settings):
     settings.PANEL_API_SECRET = SECRET
     settings.DEFAULT_ONG_ID = 0
+    settings.DEFAULT_ONG_JOIN_ROLE = 'observer'
 
 
 def panel(client, method, path, phone=NEWCOMER, data=None):

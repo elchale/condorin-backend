@@ -91,10 +91,10 @@ LINK_SIGN_IN_DAYS = env.int('LINK_SIGN_IN_DAYS', default=7)
 # TODO: demo only. Everyone who signs in on condorin.pe joins this ONG (empty: the oldest active ONG).
 # Replace with real ONG invitations before going past the demo.
 DEFAULT_ONG_ID = env.int('DEFAULT_ONG_ID', default=0)
-# The role of someone who joins the default ONG that way: 'observer' (sees the panel and the alerts, never
-# opens or signs an expediente) or 'member' (full rights, the behaviour before 2026-10-18). Admins with a
+# The role of someone who joins the default ONG that way: 'member' (full rights, the default for the live demo
+# since 2026-10-18 08:30) or 'observer' (sees the panel and the alerts, never opens or signs an expediente). Admins with a
 # phone always join as 'member'. Members the ONG or the admins add by hand are 'member'.
-DEFAULT_ONG_JOIN_ROLE = env('DEFAULT_ONG_JOIN_ROLE', default='observer')
+DEFAULT_ONG_JOIN_ROLE = env('DEFAULT_ONG_JOIN_ROLE', default='member')
 
 # Redacción asistida de los hechos del expediente con Claude, vía LangChain (expedientes/redaccion.py).
 # Apagada por defecto: enciéndela con EXPEDIENTE_IA_ENABLED=True y una ANTHROPIC_API_KEY.

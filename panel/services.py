@@ -44,8 +44,8 @@ def member_for_phone(phone: str) -> tuple[Member, bool]:
     """The ONG member behind a condorin.pe sign in. Returns (member, joined_now).
 
     Someone already in an ONG keeps it, with the role they have. Anyone else joins the default ONG (demo only,
-    see default_ong) as an observer: they see the panel and get the alerts, but cannot open, edit or sign
-    an expediente in the name of an ONG that never invited them (join_role, DEFAULT_ONG_JOIN_ROLE).
+    see default_ong) with DEFAULT_ONG_JOIN_ROLE: a full member for the live demo, or an observer who sees the panel
+    and gets the alerts but cannot open, edit or sign an expediente of an ONG that never invited them (join_role).
     """
     member = (Member.objects.select_related('ong')
               .filter(phone=phone, active=True, ong__active=True, ong__internal=False).order_by('pk').first())

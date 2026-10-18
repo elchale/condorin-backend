@@ -63,11 +63,11 @@ def test_new_number_joins_the_default_ong(client, ong, sent):
     resp = post(client, '/api/v1/auth/entrar', {'pending': pending, 'code': code})
     assert resp.status_code == 200
     member = Member.objects.get(phone='51911222333')
-    # Anyone may sign in and watch, but only as an observer of the ONG they were never invited to.
-    assert member.ong == ong and member.role == Member.Role.OBSERVER
-    assert resp.json()['member'] == {'name': '', 'phone': '51911222333', 'role': 'observer', 'can_act': False}
+    # The demo default: a full member (DEFAULT_ONG_JOIN_ROLE; 'observer' only reads, see panel/tests/test_observer.py).
+    assert member.ong == ong and member.role == Member.Role.MEMBER
+    assert resp.json()['member'] == {'name': '', 'phone': '51911222333', 'role': 'member', 'can_act': True}
     me = client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {resp.json()["token"]}').json()
-    assert me['member']['role'] == 'observer' and me['member']['can_act'] is False
+    assert me['member']['role'] == 'member' and me['member']['can_act'] is True
 
 
 def test_wrong_code_and_attempt_limit(client, ong, sent):

@@ -61,11 +61,11 @@ def test_lists_the_ong_incidents(client, scene):
 
 def test_new_person_joins_the_default_ong(client, scene):
     body = call(client, 'get', '/api/v1/panel', phone='51911222333').json()
-    assert body['member'] == {'name': '', 'phone': '51911222333', 'joined_now': True, 'role': 'observer',
-                              'can_act': False}
+    assert body['member'] == {'name': '', 'phone': '51911222333', 'joined_now': True, 'role': 'member',
+                              'can_act': True}
     assert body['totals']['incidents'] == 1 and body['incidents'][0]['id'] == scene.pk  # sees the panel
     member = Member.objects.get(phone='51911222333')
-    assert member.ong.name == 'Asociación Amazonía Viva' and member.role == Member.Role.OBSERVER
+    assert member.ong.name == 'Asociación Amazonía Viva' and member.role == Member.Role.MEMBER
     assert call(client, 'get', '/api/v1/panel', phone='51911222333').json()['member']['joined_now'] is False
 
 
@@ -82,7 +82,6 @@ def test_deactivated_member_is_not_rejoined(client, ong):
 
 
 def test_open_expediente_from_panel(client, scene, settings):
-    settings.DEFAULT_ONG_JOIN_ROLE = 'member'  # the behaviour before observers, still one setting away
     newcomer = '51911222333'
     call(client, 'get', '/api/v1/panel', phone=newcomer)
     res = call(client, 'post', f'/api/v1/panel/incidentes/{scene.pk}/expediente', phone=newcomer)

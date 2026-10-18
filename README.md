@@ -62,7 +62,7 @@ Built in 30 hours. These are the shortcuts we took on purpose, what each one ris
 | Shortcut | Where | Risk | In production |
 |---|---|---|---|
 | Hackathon alert window (today or yesterday) and a cap of 50 WhatsApp alerts | `detections/limits.py` | A real scene older than yesterday alerts nobody | Delete the limits; `ALERT_RECENT_DAYS` and Meta's own quality rating take over |
-| Everyone who signs in joins the default ONG, as an observer (`DEFAULT_ONG_JOIN_ROLE`) | `panel.services.member_for_phone` | Anyone with a phone sees that ONG's incidents and gets its alerts (observers never open, edit, sign or file an expediente, nor see the signer's data) | Invitations sent by each ONG's admin, one member per invitation |
+| Everyone who signs in joins the default ONG as a full member (`DEFAULT_ONG_JOIN_ROLE`, `observer` to read only) | `panel.services.member_for_phone` | Anyone with a phone sees that ONG's incidents, gets its alerts and can sign its expedientes (set `observer` to stop that) | Invitations sent by each ONG's admin, one member per invitation |
 | Alerts are sent on a thread after the webhook answers | `detections.services.dispatch` | On Cloud Run with request based CPU the thread can stall; `manage.py send_pending_alerts` retries | `ALERTS_INLINE=True` or Cloud Tasks, plus CPU always allocated |
 | An unknown river slug from the detector is created, not rejected | `detections.services.ingest` | A typo stores a scene nobody watches (the webhook answers `no_recipients`) | Kept: a new river must be stored; an admin assigns ONGs to it |
 | The detector runs when someone calls its trigger, not on every upload | detector repo, `POST /procesar` | A forgotten call means no scene | Kept: bucket events fire per file with no "upload finished" signal; a scheduler calls the trigger after each satellite pass |
@@ -79,7 +79,7 @@ six for the browser sign in (map and static SPA), and the pages.
 | GET | `/api/v1/expedientes/<token>` | ONG member | Opens (and on first tap creates) the expediente, with everything the page needs. `?formato=pdf` returns the PDF. |
 | PATCH | `/api/v1/expedientes/<token>` | ONG member | Any subset of the fields (autosave), `authorities: [codes]`, `filings: [{authority, receipt_number, filed_at}]` (only with `Authorization: Bearer <session>` opened with a WhatsApp code by that same member, else 403 `code_session_required`), `reopen: true`. |
 | POST | `/api/v1/expedientes/<token>/enviar` | ONG member | `{}` checks completeness and sends the code (202). `{"code": "123456"}` finalizes and emails (200). |
-| GET | `/api/v1/panel` | condorin.pe server | `Authorization: Bearer <PANEL_API_SECRET>`, `X-Condorin-Phone`. The member, their ONG and its incidents with the next action. Joins the default ONG on first call (demo only) as an observer and sends the WhatsApp welcome, never an event. `member` carries `role` (`member` or `observer`) and `can_act`. |
+| GET | `/api/v1/panel` | condorin.pe server | `Authorization: Bearer <PANEL_API_SECRET>`, `X-Condorin-Phone`. The member, their ONG and its incidents with the next action. Joins the default ONG on first call (demo only) with `DEFAULT_ONG_JOIN_ROLE` (default `member`) and sends the WhatsApp welcome, never an event. `member` carries `role` (`member` or `observer`) and `can_act`. |
 | POST | `/api/v1/panel/incidentes/<id>/expediente` | condorin.pe server | Same headers. The member's personal expediente token for that incident, created if they had no alert. |
 | POST | `/api/v1/panel/enlace` | condorin.pe server | `{"token"}` → the member a WhatsApp alert link may sign in (sent, under `LINK_SIGN_IN_DAYS`), else 404. |
 | GET | `/api/v1/panel/actividad?limit=N` | condorin.pe server | Secret only, no phone. The admin live feed: the last N scenes received (default 20, max 50), newest first, each with its detections, the ONGs that watch the river, their alerts and expediente, and the 8 decision steps (contract in `condorin/src/lib/admin/activity.ts`). |
@@ -101,8 +101,8 @@ should handle: `link_expired` (410), `code_invalid`, `code_expired`, `code_too_s
 than 5 codes for one expediente in an hour), `expediente_locked` (409), `observer_restricted` (403), `code_session_required` (403, a filing sent without a code session), `whatsapp_error` (502).
 
 **Roles.** A member the ONG or the admins added (`role` `member`) opens, edits, confirms and files. Someone who joined the
-default ONG by signing in is an `observer` (admins with a phone always join as `member`; `DEFAULT_ONG_JOIN_ROLE=member`
-restores full rights for every newcomer): the panel, the incidents, the alerts and the event page work as usual, and
+default ONG by signing in gets `DEFAULT_ONG_JOIN_ROLE`: `member` by default for the live demo, or `observer` (admins with a phone
+always join as `member`). For an observer the panel, the incidents, the alerts and the event page work as usual, and
 `GET /api/v1/expedientes/<token>` returns the ONG's existing draft with `"read_only": true`, the signer's `rep_name`,
 `rep_dni`, `rep_position` and `notify_email` blank, no names of other members and `pdf_url` null. `PATCH`, `/enviar` and
 `?formato=pdf` answer 403 `observer_restricted`. Promote someone in `/admin/` (Miembros, rol).

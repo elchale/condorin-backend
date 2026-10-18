@@ -48,7 +48,7 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
 
 ## API
 
-Nine routes in total: three for the expediente, three for the condorin.pe server, the webhook, and the pages.
+Ten routes in total: three for the expediente, four for the condorin.pe server, the webhook, and the pages.
 
 | Method | Path | Who | What |
 |---|---|---|---|
@@ -59,6 +59,7 @@ Nine routes in total: three for the expediente, three for the condorin.pe server
 | GET | `/api/v1/panel` | condorin.pe server | `Authorization: Bearer <PANEL_API_SECRET>`, `X-Condorin-Phone`. The member, their ONG and its incidents with the next action. Joins the default ONG on first call (demo only). |
 | POST | `/api/v1/panel/incidentes/<id>/expediente` | condorin.pe server | Same headers. The member's personal expediente token for that incident, created if they had no alert. |
 | POST | `/api/v1/panel/enlace` | condorin.pe server | `{"token"}` → the member a WhatsApp alert link may sign in (sent, under `LINK_SIGN_IN_DAYS`), else 404. |
+| GET | `/api/v1/panel/actividad?limit=N` | condorin.pe server | Secret only, no phone. The admin live feed: the last N scenes received (default 20, max 50), newest first, each with its detections, the ONGs that watch the river, their alerts and expediente, and the 8 decision steps (contract in `condorin/src/lib/admin/activity.ts`). |
 | GET | `/` and `/healthz/` | anyone | Landing page with the logo; liveness probe. |
 | | `/admin/` | staff | ONGs, members, rivers, authorities, detections, alerts, expedientes. |
 

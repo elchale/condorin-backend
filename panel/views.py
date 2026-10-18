@@ -3,19 +3,20 @@
 GET   /api/v1/panel                                  the member, their ONG and its incidents
 POST  /api/v1/panel/incidentes/<id>/expediente       the member's link to that incident's expediente
 POST  /api/v1/panel/enlace  {"token"}                which member a WhatsApp alert link signs in
+GET   /api/v1/panel/actividad?limit=N                the admin live feed: every scene and each decision taken
 
 Every call carries `Authorization: Bearer <PANEL_API_SECRET>`; the first two also `X-Condorin-Phone`.
 """
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core import gcs
 from core.geo import coord, maps_url, utm
 from detections.text import fecha_larga
 from expedientes.drafting import place_sentence
 
+from .activity import activity_feed, parse_limit
 from .auth import authenticate_frontend, member_phone
-from .services import incidents, member_for_phone, missing_count, open_from_panel, sign_in_by_link
+from .services import crop_url, incidents, member_for_phone, missing_count, open_from_panel, sign_in_by_link
 
 # How many crops of one scene the panel card shows.
 CARD_CROPS = 4
@@ -27,16 +28,6 @@ class FrontendView(APIView):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         authenticate_frontend(request)
-
-
-def _crop_url(detection) -> str | None:
-    if not detection.crop_uri:
-        return None
-    try:
-        bucket, name, generation = gcs.parse_gs_uri(detection.crop_uri)
-    except ValueError:
-        return None
-    return gcs.signed_url(bucket, name, detection.crop_generation or generation)
 
 
 def _incident(image, detections, expediente) -> dict:
@@ -56,7 +47,7 @@ def _incident(image, detections, expediente) -> dict:
         'lon': lon,
         'utm': utm(float(best.lat), float(best.lon))['label'],
         'maps_url': maps_url(lat, lon),
-        'crops': [url for url in (_crop_url(d) for d in detections[:CARD_CROPS]) if url],
+        'crops': [url for url in (crop_url(d) for d in detections[:CARD_CROPS]) if url],
         'evidence_pinned': bool(image.md5_hash),
         'expediente': expediente and {
             'status': expediente.status,
@@ -109,3 +100,10 @@ class LinkSignInView(FrontendView):
     def post(self, request):
         member = sign_in_by_link(str(request.data.get('token', '')).strip())
         return Response({'phone': member.phone, 'name': member.full_name})
+
+
+class ActivityView(FrontendView):
+    """Called by the condorin.pe admin server, so the secret alone is enough (no member phone)."""
+
+    def get(self, request):
+        return Response(activity_feed(parse_limit(request.query_params.get('limit'))))

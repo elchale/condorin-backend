@@ -6,6 +6,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
 
+from core import gcs
 from core.exceptions import BaseError
 from detections.models import Alert, Detection, SatelliteImage, default_expiry
 from expedientes.models import Expediente
@@ -96,3 +97,14 @@ def sign_in_by_link(token: str) -> Member:
 
 def missing_count(expediente: Expediente) -> int:
     return len(missing_fields(expediente))
+
+
+def crop_url(detection) -> str | None:
+    """Signed link to the pinned version of a detection's crop, or None when it cannot be signed."""
+    if not detection.crop_uri:
+        return None
+    try:
+        bucket, name, generation = gcs.parse_gs_uri(detection.crop_uri)
+    except ValueError:
+        return None
+    return gcs.signed_url(bucket, name, detection.crop_generation or generation)

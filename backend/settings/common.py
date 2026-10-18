@@ -134,13 +134,26 @@ if DEBUG:
 CORS_EXPOSE_HEADERS = ['x-request-id', 'content-disposition']
 # django-cors-headers' default headers already include authorization and content-type.
 
+# `default` is shared by every instance (a table in the same Postgres, created by core 0002_cache_table): sign in
+# codes, attempt counters and their throttles. `local` is process memory for payload caches, the clock row and
+# the high volume throttles (core/cache.py, core/throttling.py).
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+        # Culling at the default 300 rows would drop live resend locks and attempt counters.
+        'OPTIONS': {'MAX_ENTRIES': 50000},
+    },
+    'local': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'condorin-local'},
+}
+
 REST_FRAMEWORK = {
     # No sessions or JWT: callers prove who they are with the link token or the webhook bearer.
     'DEFAULT_AUTHENTICATION_CLASSES': [],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
     'UNAUTHENTICATED_USER': None,
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
-    'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.ScopedRateThrottle'],
+    'DEFAULT_THROTTLE_CLASSES': ['core.throttling.ScopedThrottle'],
     'DEFAULT_THROTTLE_RATES': {
         'expediente': '120/minute',
         'expediente_send': '30/hour',

@@ -113,8 +113,10 @@ and condorin.pe/panel uses the panel routes. The screens are in [`docs/EXPEDIENT
 - **Gzip.** `GZipMiddleware` compresses every response above 200 bytes when the client accepts it (Cloud Run does not).
 - **Session.** `pending` and the session token are `django.core.signing.TimestampSigner` values (salts `otp-pending`, `session`).
   The pending value carries an HMAC of the code keyed with `DJANGO_SECRET_KEY`, never the code; it lasts 10 minutes and the
-  session 30 days. Attempts and the 45 s resend lock live in Django's cache (LocMem): exact on one instance, per instance
-  behind several until `CACHES` points at a shared backend. Error types: `code_invalid`, `code_expired`, `code_too_soon` (429),
+  session 30 days. Attempts, the 45 s resend lock and the throttles of the sign in routes live in the shared default
+  cache, the DatabaseCache table `django_cache` (created by the `core` migration `0002_cache_table`), so the limits hold across
+  every Cloud Run instance. The map and feed payloads, the clock row and the high volume throttles stay in the process cache
+  `local` (`core/cache.py`, `core/throttling.py`). Error types: `code_invalid`, `code_expired`, `code_too_soon` (429),
   `session_invalid` (401). Sessions carry `via` (`code` or `link`); a link session never finalizes a denuncia, because
   `/enviar` ignores the bearer and always asks for the WhatsApp code sent to that member.
 - **Browser calls.** The expediente, event, PDF, `/auth/*` and `/me*` routes answer condorin.pe and www.condorin.pe

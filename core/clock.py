@@ -17,10 +17,10 @@ from __future__ import annotations
 import logging
 from datetime import UTC, date, datetime, time, timedelta
 
-from django.core.cache import cache
 from django.db import DatabaseError
 from django.utils import timezone
 
+from .cache import local as cache
 from .models import Clock
 
 logger = logging.getLogger(__name__)

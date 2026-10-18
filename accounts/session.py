@@ -5,9 +5,8 @@ never be used as the other. Nothing is stored server side except a short lived a
 cache. The code itself never leaves the server: the pending value only carries an HMAC of it, keyed
 with SECRET_KEY (a bare sha256 of a 6 digit code could be reversed offline in a millisecond).
 
-Caveat: the attempt counter and the 45 s resend lock live in Django's cache. With the default LocMem
-cache each instance counts on its own, which is fine on one Cloud Run instance; behind several the
-limits are per instance until CACHES points at a shared backend.
+The attempt counter and the 45 s resend lock live in Django's default cache, the DatabaseCache table
+`django_cache` in the same Postgres, so every Cloud Run instance sees the same counts.
 """
 import hashlib
 import hmac

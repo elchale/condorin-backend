@@ -14,12 +14,12 @@ import json
 import threading
 
 from django.conf import settings
-from django.core.cache import cache
 from django.http import HttpResponse
 from django.utils.cache import get_conditional_response, patch_vary_headers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.cache import local as cache
 from mapa.middleware import cors
 from panel.auth import authenticate_frontend
 

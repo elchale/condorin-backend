@@ -15,6 +15,8 @@ import threading
 
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections, transaction
+from django.db.models import F
+from django.utils import timezone
 
 from core import clock, gcs, whatsapp
 from expedientes.autodraft import create_drafts
@@ -203,7 +205,7 @@ def process_image(image_id: int) -> None:
         return
     for alert in image.alerts.filter(status__in=[Alert.Status.PENDING, Alert.Status.FAILED],
                                      attempts__lt=MAX_ATTEMPTS).select_related('member'):
-        send_alert(alert)
+        send_alert_safely(alert)
     capped = image.alerts.filter(status=Alert.Status.CAPPED).count()
     if capped:
         logger.warning('detections: hackathon cap of %s WhatsApp alerts reached, %s alerts of image %s were not sent',
@@ -244,6 +246,22 @@ def header_image_url(image: SatelliteImage) -> str:
         except ValueError:
             pass
     return settings.WA_ALERT_FALLBACK_IMAGE
+
+
+def send_alert_safely(alert: Alert, **kwargs) -> None:
+    """send_alert for one recipient of a loop: whatever breaks is recorded on that alert, the others still go."""
+    try:
+        send_alert(alert, **kwargs)
+    except Exception as exc:
+        logger.exception('detections: alert %s crashed while sending', alert.pk)
+        record_failure(alert, exc)
+
+
+def record_failure(alert: Alert, exc: Exception) -> None:
+    # Counted as an attempt, so a recipient that always breaks stops being retried after MAX_ATTEMPTS.
+    Alert.objects.filter(pk=alert.pk).exclude(status=Alert.Status.SENT).update(
+        status=Alert.Status.FAILED, error=f'{type(exc).__name__}: {exc}'[:2000],
+        attempts=F('attempts') + 1, updated=timezone.now())
 
 
 def send_alert(alert: Alert) -> None:

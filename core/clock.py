@@ -9,7 +9,8 @@ The state is one row (`core.models.Clock`), read through the process cache for a
 request costs at most one extra query and every Cloud Run instance follows a change within that time.
 Set it with `manage.py set_today 2026-07-10` (or `--real`), or in the admin. Changing the day also
 queues and sends the WhatsApp alerts of every scene still recent on that day (`replay_today`): captured
-within ALERT_RECENT_DAYS before now, the same window a live webhook delivery alerts on.
+within the alert window before now (detections.limits: ALERT_RECENT_DAYS, or today and yesterday while the
+hackathon limit is set), the same window a live webhook delivery alerts on.
 """
 from __future__ import annotations
 
@@ -131,15 +132,14 @@ def day_bounds(day: date | None = None) -> tuple[datetime, datetime]:
 
 
 def recent_scenes():
-    """The scenes still recent now (captured within ALERT_RECENT_DAYS, up to now) that have something to
+    """The scenes still recent now (captured within the alert window, up to now) that have something to
     alert about, oldest first: today's scene and the ones of the days just before it."""
-    from django.conf import settings
-
+    from detections.limits import window_start
     from detections.models import SatelliteImage
     from detections.services import is_simulated as scene_is_simulated
 
     current = now()
-    start = current - timedelta(days=settings.ALERT_RECENT_DAYS)
+    start = window_start(current)
     scenes = (SatelliteImage.objects.select_related('river')
               .filter(captured_at__gte=start, captured_at__lte=current).order_by('captured_at'))
     return [s for s in scenes if s.alerting_detections().exists() and not scene_is_simulated(s)]

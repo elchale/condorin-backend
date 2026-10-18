@@ -28,6 +28,8 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
          files it on the FEMA and OEFA forms, types the receipt number ──PATCH──▶ status filed
 ```
 
+- **Hackathon limits (`detections/limits.py`).** Only scenes captured today or yesterday (Lima) alert, overriding `ALERT_RECENT_DAYS`, and at most 50 WhatsApp alerts are ever sent (status `sent`); the rest become `capped`, are never retried, and the webhook answers `reason: capped`. The welcome also stops once the cap is used up.
+- **TODO(prod):** remove `HACKATHON_ALERT_WINDOW_DAYS` and `HACKATHON_MAX_ALERT_MESSAGES` before real production.
 - **Who is alerted, and when.** Only a scene captured within `ALERT_RECENT_DAYS` (default 7) alerts, at
   once, on commit. Recipients: every active member of every active ONG watching the river, plus every
   active admin (`accounts_admin`) with a `phone` (`manage.py set_admin_phone <email> <phone>`). Admins sit in

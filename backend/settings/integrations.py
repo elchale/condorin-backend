@@ -15,6 +15,7 @@ DETECTIONS_ALLOWED_SERVICE_ACCOUNTS = env.list('DETECTIONS_ALLOWED_SERVICE_ACCOU
 ALERT_MIN_CONFIDENCE = env.float('ALERT_MIN_CONFIDENCE', default=0.5)
 # Only scenes captured within this many days alert by WhatsApp (ONG members and admins with a phone).
 # Older scenes are stored and shown on the map but alert nobody.
+# TODO(prod): while detections/limits.py HACKATHON_ALERT_WINDOW_DAYS is set it overrides this (today or yesterday).
 ALERT_RECENT_DAYS = env.int('ALERT_RECENT_DAYS', default=7)
 
 # WhatsApp Cloud API, Qolca Solutions WABA (same number as the condorin.pe sign in).

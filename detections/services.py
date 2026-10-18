@@ -1,8 +1,9 @@
 """Store a webhook delivery, then alert every member of the ONGs that watch that river.
 
-Only a recent scene alerts (captured within ALERT_RECENT_DAYS): its recipients are the active
-members of every ONG watching the river plus the admins with a phone, through the hidden internal
-ONG (ongs.team). Older or simulated scenes are stored and shown on the map but alert nobody.
+Only a recent scene alerts (captured within ALERT_RECENT_DAYS; TODO(prod): while the hackathon limits in
+detections/limits.py are set, today or yesterday in Lima, and at most 50 WhatsApp alerts in total).
+Its recipients are the active members of every ONG watching the river plus the admins with a phone,
+through the hidden internal ONG (ongs.team). Older or simulated scenes are stored and shown on the map but alert nobody.
 
 Delivery is at least once on the detector side, so storing is idempotent on the
 Idempotency-Key and every alert row is unique per (image, member): a retry never
@@ -11,7 +12,6 @@ messages anyone twice.
 import hashlib
 import logging
 import threading
-from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections, transaction
@@ -21,6 +21,7 @@ from expedientes.autodraft import create_drafts
 from ongs.models import Member, River
 from ongs.team import sync_internal_team
 
+from . import limits
 from .models import Alert, Detection, SatelliteImage
 from .text import alert_template_components
 
@@ -34,11 +35,18 @@ OLD_SCENE = 'old_scene'
 SIMULATED = 'simulated'
 BELOW_THRESHOLD = 'below_threshold'
 NO_RECIPIENTS = 'no_recipients'
+CAPPED = 'capped'  # TODO(prod): hackathon cap, see detections/limits.py
+
+# Serializes the cap check and the send within this process, so two alert threads cannot both take the last slot.
+_send_lock = threading.Lock()
 
 
 def is_recent(image: SatelliteImage) -> bool:
-    """Captured within ALERT_RECENT_DAYS of the API's clock (core.clock: real, or the demo day)."""
-    return image.captured_at >= clock.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
+    """Captured within the alert window of the API's clock (core.clock: real, or the demo day).
+
+    TODO(prod): while limits.HACKATHON_ALERT_WINDOW_DAYS is set it overrides ALERT_RECENT_DAYS (today or yesterday in Lima).
+    """
+    return image.captured_at >= limits.window_start(clock.now())
 
 
 def is_simulated(image: SatelliteImage) -> bool:
@@ -58,7 +66,14 @@ def alert_reason(image: SatelliteImage) -> str:
         return BELOW_THRESHOLD
     if not is_recent(image):
         return OLD_SCENE
-    return ALERTED if image.alerts.exists() else NO_RECIPIENTS
+    alerts = image.alerts.exclude(status=Alert.Status.PANEL)
+    if not alerts.exists():
+        return NO_RECIPIENTS
+    if not alerts.filter(status=Alert.Status.SENT).exists() and (
+            alerts.filter(status=Alert.Status.CAPPED).exists() or limits.cap_reached()):
+        # Nothing for this scene went out, and nothing can: the hackathon cap is used up.
+        return CAPPED
+    return ALERTED
 
 
 def recipients(river: River) -> list[Member]:
@@ -137,8 +152,8 @@ def ingest(data: dict, key: str, raw: dict) -> tuple[SatelliteImage, bool]:
         if is_simulated(image):
             logger.info('detections: image %s is marked simulated, nobody was alerted', image.pk)
         elif not is_recent(image):
-            logger.info('detections: image %s was captured %s, older than %s days, nobody was alerted',
-                        image.pk, image.captured_at, settings.ALERT_RECENT_DAYS)
+            logger.info('detections: image %s was captured %s, older than %s, nobody was alerted',
+                        image.pk, image.captured_at, limits.window_label())
         else:
             members = recipients(river)
             Alert.objects.bulk_create([Alert(image=image, member=m) for m in members])
@@ -189,6 +204,10 @@ def process_image(image_id: int) -> None:
     for alert in image.alerts.filter(status__in=[Alert.Status.PENDING, Alert.Status.FAILED],
                                      attempts__lt=MAX_ATTEMPTS).select_related('member'):
         send_alert(alert)
+    capped = image.alerts.filter(status=Alert.Status.CAPPED).count()
+    if capped:
+        logger.warning('detections: hackathon cap of %s WhatsApp alerts reached, %s alerts of image %s were not sent',
+                       limits.HACKATHON_MAX_ALERT_MESSAGES, capped, image.pk)
 
 
 def pin_evidence(image: SatelliteImage) -> None:
@@ -242,11 +261,17 @@ def send_alert(alert: Alert) -> None:
         lat=best.lat,
         lon=best.lon,
     )
-    alert.attempts += 1
-    try:
-        alert.wa_message_id = whatsapp.send_template(alert.member.phone, settings.WA_ALERT_TEMPLATE, components)
-    except whatsapp.WhatsAppError as exc:
-        alert.status, alert.error = Alert.Status.FAILED, str(exc)[:2000]
-    else:
-        alert.status, alert.error, alert.sent_at = Alert.Status.SENT, '', clock.now()
-    alert.save(update_fields=['attempts', 'wa_message_id', 'status', 'error', 'sent_at', 'updated'])
+    with _send_lock:
+        if limits.cap_reached():
+            # TODO(prod): hackathon cap. Never retried: send_pending_alerts only picks pending or failed.
+            alert.status, alert.error = Alert.Status.CAPPED, limits.CAPPED_ERROR
+            alert.save(update_fields=['status', 'error', 'updated'])
+            return
+        alert.attempts += 1
+        try:
+            alert.wa_message_id = whatsapp.send_template(alert.member.phone, settings.WA_ALERT_TEMPLATE, components)
+        except whatsapp.WhatsAppError as exc:
+            alert.status, alert.error = Alert.Status.FAILED, str(exc)[:2000]
+        else:
+            alert.status, alert.error, alert.sent_at = Alert.Status.SENT, '', clock.now()
+        alert.save(update_fields=['attempts', 'wa_message_id', 'status', 'error', 'sent_at', 'updated'])

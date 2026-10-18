@@ -1,11 +1,15 @@
-"""Who a webhook delivery alerts, and when: recent scenes only, ONG members plus admins with a phone."""
+"""Who a webhook delivery alerts, and when: recent scenes only (today or yesterday in Lima), ONG members plus admins
+with a phone, and never more than the hackathon cap of WhatsApp alerts."""
 from datetime import timedelta
+from io import StringIO
 
 import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
 from accounts.models import Admin
+from core import clock
+from detections import limits
 from detections.models import Alert, SatelliteImage
 from ongs.models import Ong, River
 
@@ -13,8 +17,12 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture(autouse=True)
-def week_window(settings):
+def hackathon_window(settings, monkeypatch):
+    """The live rule: today or yesterday in Lima (detections.limits), whatever ALERT_RECENT_DAYS says."""
+    from detections import limits
+
     settings.ALERT_RECENT_DAYS = 7
+    monkeypatch.setattr(limits, 'HACKATHON_ALERT_WINDOW_DAYS', 2)
 
 
 @pytest.fixture
@@ -111,3 +119,85 @@ def test_new_member_gets_no_old_alert(client, payload, ong, sent, settings, post
     post_detection(payload)
     member, joined = member_for_phone('51955555555')
     assert joined and not member.alerts.exists() and not sent
+
+
+def lima_day(days_ago: int, hour: int = 12) -> str:
+    """Noon (Lima) of a calendar day counted back from today in Lima."""
+    from datetime import datetime, time
+    tz = timezone.get_current_timezone()
+    day = timezone.localtime(clock.now(), tz).date() - timedelta(days=days_ago)
+    return datetime.combine(day, time(hour), tzinfo=tz).isoformat()
+
+
+def test_scene_from_yesterday_alerts(post_detection, payload, ong, sent):
+    payload['image']['captured_at'] = lima_day(1, hour=0)  # the very start of yesterday in Lima
+    assert post_detection(payload).json()['reason'] == 'alerted'
+    assert len(sent) == 2
+
+
+def test_scene_from_three_days_ago_does_not_alert(post_detection, payload, ong, sent):
+    payload['image']['captured_at'] = lima_day(3)  # inside ALERT_RECENT_DAYS = 7, outside the hackathon window
+    assert post_detection(payload).json()['reason'] == 'old_scene'
+    assert not sent and not Alert.objects.exists()
+
+
+def test_window_constant_overrides_the_setting(settings):
+    settings.ALERT_RECENT_DAYS = 365
+    start = timezone.localtime(limits.window_start(clock.now()))
+    assert start.date() == timezone.localtime(clock.now()).date() - timedelta(days=1)
+    assert (start.hour, start.minute) == (0, 0)
+
+
+def fill_sent(n: int, river) -> None:
+    """n alerts already sent, on some other scene, to n different members."""
+    from ongs.models import Member, Ong
+
+    other = SatelliteImage.objects.create(
+        idempotency_key='earlier', river=river, bucket='b', object_name='o', generation='1', satellite='S1',
+        captured_at=timezone.now(), model_name='m', model_version='v', payload={})
+    filler = Ong.objects.create(name='Relleno', short_name='Relleno', ruc='20999999999')
+    for i in range(n):
+        member = Member.objects.create(ong=filler, full_name=f'M{i}', phone=f'5190100{i:04d}')
+        Alert.objects.create(image=other, member=member, status=Alert.Status.SENT)
+
+
+def test_cap_lets_the_50th_out_and_caps_the_51st(post_detection, payload, ong, sent, river):
+    fill_sent(limits.HACKATHON_MAX_ALERT_MESSAGES - 1, river)
+    payload['image']['captured_at'] = lima_day(0, hour=0)
+    resp = post_detection(payload)
+
+    assert resp.json()['reason'] == 'alerted'
+    assert len(sent) == 1  # two members, only one slot left
+    statuses = sorted(Alert.objects.filter(image_id=resp.json()['id']).values_list('status', flat=True))
+    assert statuses == [Alert.Status.CAPPED, Alert.Status.SENT]
+    capped = Alert.objects.get(status=Alert.Status.CAPPED)
+    assert capped.error == 'Límite de 50 mensajes del hackathon alcanzado' and capped.attempts == 0
+    assert Alert.objects.filter(status=Alert.Status.SENT).count() == limits.HACKATHON_MAX_ALERT_MESSAGES
+
+
+def test_capped_alerts_are_never_retried(post_detection, payload, ong, sent, river):
+    fill_sent(limits.HACKATHON_MAX_ALERT_MESSAGES, river)
+    payload['image']['captured_at'] = lima_day(0, hour=0)
+    post_detection(payload)
+    assert not sent and Alert.objects.filter(status=Alert.Status.CAPPED).count() == 2
+
+    # Even once slots free up, a capped alert stays unsent: the retry only picks pending or failed.
+    Alert.objects.filter(member__ong__name='Relleno').delete()
+    call_command('send_pending_alerts', stdout=StringIO())
+    assert not sent and Alert.objects.filter(status=Alert.Status.CAPPED).count() == 2
+
+
+def test_webhook_reports_capped(post_detection, payload, ong, sent, river):
+    fill_sent(limits.HACKATHON_MAX_ALERT_MESSAGES, river)
+    payload['image']['captured_at'] = lima_day(0, hour=0)
+    body = post_detection(payload).json()
+    assert body['reason'] == 'capped' and body['alerted'] is False and not sent
+
+
+def test_cap_stops_the_welcome_too(settings, sent, river):
+    from panel.welcome import send_welcome
+
+    settings.ALERTS_INLINE = True
+    fill_sent(limits.HACKATHON_MAX_ALERT_MESSAGES, river)
+    send_welcome('51955555555')
+    assert not sent

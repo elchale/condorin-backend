@@ -12,7 +12,7 @@ class DetectionWebhookView(APIView):
 
     201 on a new delivery, 200 when the Idempotency-Key was already processed.
     Alerts go out after the response, so the detector never waits on WhatsApp, and only for
-    scenes captured within ALERT_RECENT_DAYS.
+    scenes captured within the alert window (today or yesterday in Lima while the hackathon limits hold).
     """
 
     def get_authenticate_header(self, request):
@@ -34,8 +34,8 @@ class DetectionWebhookView(APIView):
                 'duplicate': not created,
                 'detections': image.detections.count(),
                 'alerts': image.alerts.count(),
-                # Only scenes captured within ALERT_RECENT_DAYS alert: reason is alerted, old_scene,
-                # simulated, below_threshold or no_recipients.
+                # Only recent scenes alert: reason is alerted, old_scene, simulated, below_threshold,
+                # no_recipients or capped (the hackathon cap of WhatsApp alerts is used up).
                 'alerted': reason == ALERTED,
                 'reason': reason,
             },

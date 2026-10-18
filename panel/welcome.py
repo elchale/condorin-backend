@@ -40,6 +40,11 @@ def send_welcome(phone: str) -> None:
     """Sends the welcome on a thread, so the sign in does not wait for Meta. A failure is only logged."""
     if not settings.WA_WELCOME_TEMPLATE:
         return
+    from detections.limits import cap_reached
+    if cap_reached():
+        # TODO(prod): hackathon cap (detections/limits.py): once it is used up, no WhatsApp goes out at all.
+        logger.warning('panel: hackathon WhatsApp cap reached, no welcome to %s', phone)
+        return
 
     def run():
         try:

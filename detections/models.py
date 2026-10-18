@@ -92,6 +92,8 @@ class Alert(BaseModel):
         FAILED = 'failed', 'Falló'
         # Opened from the condorin.pe panel by a member who got no WhatsApp alert; never sent.
         PANEL = 'panel', 'Abierta desde el panel'
+        # TODO(prod): hackathon cap (detections/limits.py). Never sent and never retried.
+        CAPPED = 'capped', 'No enviada (límite del hackathon)'
 
     image = models.ForeignKey(SatelliteImage, on_delete=models.CASCADE, related_name='alerts')
     member = models.ForeignKey('ongs.Member', on_delete=models.CASCADE, related_name='alerts')

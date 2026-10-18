@@ -28,6 +28,7 @@ from rest_framework.views import APIView
 
 from core import whatsapp
 from core.exceptions import BaseError
+from core.throttling import PhoneThrottle, ScopedThrottle
 from expedientes.codes import MAX_ATTEMPTS, RESEND_SECONDS, CodeExpired, CodeInvalid, CodeTooSoon
 from panel.services import incident_images, member_for_phone, open_from_panel, sign_in_by_link, with_expedientes
 from panel.views import IncidentPagination, incident_rows, panel_payload
@@ -72,6 +73,11 @@ def record_sign_in(phone: str) -> bool:
 
 class CodeView(APIView):
     throttle_scope = 'auth_code'
+    phone_throttle_scope = 'auth_code_phone'
+    throttle_classes = [ScopedThrottle, PhoneThrottle]
+
+    def throttle_phone(self, request):
+        return normalize_phone(request.data.get('phone'))
 
     def post(self, request):
         phone = normalize_phone(request.data.get('phone'))
@@ -96,6 +102,14 @@ class CodeView(APIView):
 
 class EnterView(APIView):
     throttle_scope = 'auth_enter'
+    phone_throttle_scope = 'auth_enter_phone'
+    throttle_classes = [ScopedThrottle, PhoneThrottle]
+
+    def throttle_phone(self, request):
+        try:
+            return read_pending(str(request.data.get('pending', '')).strip())['p']
+        except signing.BadSignature:  # the view answers it; a forged value spends only the IP budget
+            return None
 
     def post(self, request):
         pending = str(request.data.get('pending', '')).strip()

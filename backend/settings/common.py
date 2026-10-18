@@ -154,6 +154,9 @@ REST_FRAMEWORK = {
     'UNAUTHENTICATED_USER': None,
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_THROTTLE_CLASSES': ['core.throttling.ScopedThrottle'],
+    # Cloud Run's front end is the one proxy: it appends the caller's address to X-Forwarded-For, so the client
+    # is the last entry and anything the caller wrote before it is ignored. Behind a load balancer, set 2.
+    'NUM_PROXIES': env.int('NUM_PROXIES', default=1),
     'DEFAULT_THROTTLE_RATES': {
         'expediente': '120/minute',
         'expediente_send': '30/hour',
@@ -163,6 +166,9 @@ REST_FRAMEWORK = {
         'fuentes': '600/minute',
         'auth_code': '10/hour',
         'auth_enter': '30/hour',
+        # Per phone, from any IP (core.throttling.PhoneThrottle), on top of the per IP limits above.
+        'auth_code_phone': '6/hour',
+        'auth_enter_phone': '20/hour',
         'me': '300/minute',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.envelope_exception_handler',

@@ -58,9 +58,10 @@ jobs:
       - run: python manage.py makemigrations --check --dry-run --settings=backend.test_settings
       - run: pytest --tb=short -q
 
-  # Pushes to main that pass lint and tests ship to Cloud Run. GitHub signs in to GCP with
-  # Workload Identity Federation (no key stored here). Only the image changes: env vars, secrets,
-  # CPU and scaling stay as configured on the service. The entrypoint runs the migrations.
+  # Pushes to main that pass lint and tests ship to Cloud Run. GitHub signs in to GCP as the
+  # github-deployer service account, whose JSON key is the GCP_SA_KEY repository secret. Only the
+  # image changes: env vars, secrets, CPU and scaling stay as configured on the service. The
+  # entrypoint runs the migrations.
   deploy:
     name: Deploy to Cloud Run
     needs: [lint, test]
@@ -71,17 +72,13 @@ jobs:
     concurrency:
       group: deploy-cloud-run
       cancel-in-progress: false
-    permissions:
-      contents: read
-      id-token: write
     env:
       IMAGE: us-central1-docker.pkg.dev/wisecai-consultor-prod/cloud-run-source-deploy/condorin-api:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/734156824859/locations/global/workloadIdentityPools/github/providers/condorin-backend
-          service_account: github-deployer@wisecai-consultor-prod.iam.gserviceaccount.com
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
       - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
       - run: docker build -t "$IMAGE" . && docker push "$IMAGE"

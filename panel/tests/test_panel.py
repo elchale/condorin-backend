@@ -48,6 +48,7 @@ def test_lists_the_ong_incidents(client, scene):
     body = call(client, 'get', '/api/v1/panel').json()
     assert body['member']['name'] == 'María Huamán Ríos'
     assert body['member']['joined_now'] is False
+    assert body['member']['role'] == 'member' and body['member']['can_act'] is True  # added by the ONG
     assert body['ong']['name'] == 'Amazonía Viva'
     assert body['totals'] == {'incidents': 1, 'without_expediente': 0, 'draft': 1, 'ready': 0, 'filed': 0}
     incident = body['incidents'][0]
@@ -60,10 +61,11 @@ def test_lists_the_ong_incidents(client, scene):
 
 def test_new_person_joins_the_default_ong(client, scene):
     body = call(client, 'get', '/api/v1/panel', phone='51911222333').json()
-    assert body['member'] == {'name': '', 'phone': '51911222333', 'joined_now': True}
-    assert body['totals']['incidents'] == 1
+    assert body['member'] == {'name': '', 'phone': '51911222333', 'joined_now': True, 'role': 'observer',
+                              'can_act': False}
+    assert body['totals']['incidents'] == 1 and body['incidents'][0]['id'] == scene.pk  # sees the panel
     member = Member.objects.get(phone='51911222333')
-    assert member.ong.name == 'Asociación Amazonía Viva'
+    assert member.ong.name == 'Asociación Amazonía Viva' and member.role == Member.Role.OBSERVER
     assert call(client, 'get', '/api/v1/panel', phone='51911222333').json()['member']['joined_now'] is False
 
 
@@ -79,7 +81,8 @@ def test_deactivated_member_is_not_rejoined(client, ong):
     assert call(client, 'get', '/api/v1/panel', phone='51999888777').status_code == 403
 
 
-def test_open_expediente_from_panel(client, scene):
+def test_open_expediente_from_panel(client, scene, settings):
+    settings.DEFAULT_ONG_JOIN_ROLE = 'member'  # the behaviour before observers, still one setting away
     newcomer = '51911222333'
     call(client, 'get', '/api/v1/panel', phone=newcomer)
     res = call(client, 'post', f'/api/v1/panel/incidentes/{scene.pk}/expediente', phone=newcomer)

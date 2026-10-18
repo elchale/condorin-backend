@@ -162,7 +162,7 @@ def _signed_in(member, via: str) -> dict:
     return {
         'token': session_token(member.phone, via),
         'via': via,
-        'member': {'name': member.full_name, 'phone': member.phone},
+        'member': {'name': member.full_name, 'phone': member.phone, 'role': member.role, 'can_act': member.can_act},
         'ong': {'name': member.ong.display_name},
     }
 
@@ -203,7 +203,7 @@ class MeIncidentsView(APIView):
         member, _ = member_for_phone(require_session(request))
         paginator = IncidentPagination()
         page = paginator.paginate_queryset(incident_images(member.ong), request, view=self)
-        return paginator.get_paginated_response(incident_rows(with_expedientes(member.ong, page)))
+        return paginator.get_paginated_response(incident_rows(with_expedientes(member.ong, page), member))
 
 
 class MeExpedienteView(APIView):

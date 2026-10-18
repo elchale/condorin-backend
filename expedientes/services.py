@@ -28,6 +28,18 @@ class ExpedienteLocked(BaseError):
     default_detail = 'El expediente ya fue presentado y no se puede modificar.'
 
 
+class ObserverRestricted(BaseError):
+    status_code = 403
+    default_detail = ('Tu cuenta es de observador: puedes ver el panel, las alertas y el expediente de tu ONG, '
+                      'pero no abrirlo, editarlo ni enviarlo. Pide a tu ONG que te agregue como miembro.')
+
+
+def require_can_act(member) -> None:
+    """Observers (members who joined the default ONG on their own) only read."""
+    if not member.can_act:
+        raise ObserverRestricted()
+
+
 # What has to be filled in before the expediente can be finalized, with the message the frontend shows.
 REQUIRED = {
     'ong_name': 'Escribe la razón social de la ONG.',
@@ -93,13 +105,29 @@ def notify_opened(alert_id: int) -> None:
     threading.Thread(target=run_in_thread, daemon=True, name=f'opened-{alert_id}').start()
 
 
-@transaction.atomic
-def open_expediente(alert: Alert) -> Expediente:
-    """The ONG's expediente for this image; created and prefilled on the first tap."""
+def mark_opened(alert: Alert) -> None:
+    """The first tap on the alert: recorded once, and the admins are emailed after the commit."""
     if alert.opened_at is None:
         alert.opened_at = clock.now()
         alert.save(update_fields=['opened_at', 'updated'])
         transaction.on_commit(lambda: notify_opened(alert.pk))
+
+
+def existing_expediente(alert: Alert) -> Expediente:
+    """What an observer may read: the ONG's expediente for the image if one exists (every scene gets an automatic
+    draft at ingest). Never creates or adopts one."""
+    with transaction.atomic():
+        mark_opened(alert)
+    expediente = Expediente.objects.filter(image=alert.image, ong=alert.member.ong).first()
+    if expediente is None:
+        raise ObserverRestricted()
+    return expediente
+
+
+@transaction.atomic
+def open_expediente(alert: Alert) -> Expediente:
+    """The ONG's expediente for this image; created and prefilled on the first tap."""
+    mark_opened(alert)
 
     member, ong, image = alert.member, alert.member.ong, alert.image
     # Drafting (and the Claude call behind it) only runs when the expediente does not exist yet.

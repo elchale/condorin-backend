@@ -37,7 +37,7 @@ def test_link_signs_in_for_seven_days(client, maria):
     assert resp.status_code == 200
     body = resp.json()
     assert body['via'] == 'link'
-    assert body['member'] == {'name': 'María Huamán Ríos', 'phone': '51936282808'}
+    assert body['member'] == {'name': 'María Huamán Ríos', 'phone': '51936282808', 'role': 'member', 'can_act': True}
     assert body['ong'] == {'name': 'Amazonía Viva'}
     assert session.read_session(body['token']) == ('51936282808', 'link')
     me = client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {body["token"]}')

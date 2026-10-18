@@ -41,7 +41,8 @@ def test_happy_path(client, ong, sent):
     resp = post(client, '/api/v1/auth/entrar', {'pending': body['pending'], 'code': code})
     assert resp.status_code == 200
     entered = resp.json()
-    assert entered['member'] == {'name': 'María Huamán Ríos', 'phone': '51936282808'}
+    assert entered['member'] == {'name': 'María Huamán Ríos', 'phone': '51936282808', 'role': 'member',
+                                 'can_act': True}
     assert entered['ong'] == {'name': 'Amazonía Viva'}
     user = SiteUser.objects.get(phone='51936282808')
     assert user.consent_at and user.last_sign_in_at
@@ -61,7 +62,12 @@ def test_new_number_joins_the_default_ong(client, ong, sent):
     _, code = code_from(sent)
     resp = post(client, '/api/v1/auth/entrar', {'pending': pending, 'code': code})
     assert resp.status_code == 200
-    assert Member.objects.get(phone='51911222333').ong == ong
+    member = Member.objects.get(phone='51911222333')
+    # Anyone may sign in and watch, but only as an observer of the ONG they were never invited to.
+    assert member.ong == ong and member.role == Member.Role.OBSERVER
+    assert resp.json()['member'] == {'name': '', 'phone': '51911222333', 'role': 'observer', 'can_act': False}
+    me = client.get('/api/v1/me', HTTP_AUTHORIZATION=f'Bearer {resp.json()["token"]}').json()
+    assert me['member']['role'] == 'observer' and me['member']['can_act'] is False
 
 
 def test_wrong_code_and_attempt_limit(client, ong, sent):

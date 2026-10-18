@@ -18,11 +18,20 @@ from .autodraft import adopt
 from .models import Expediente
 from .pdf import build_pdf
 from .serializers import ExpedienteUpdateSerializer, event_payload, expediente_payload
-from .services import alert_for_token, finalize, missing_fields, open_expediente, update_expediente
+from .services import (
+    alert_for_token,
+    existing_expediente,
+    finalize,
+    missing_fields,
+    open_expediente,
+    require_can_act,
+    update_expediente,
+)
 
 
 def _open(alert):
     """The expediente behind a link; an automatic draft is found, never created twice."""
+    require_can_act(alert.member)
     return adopt(open_expediente(alert), alert.member)
 
 
@@ -31,6 +40,11 @@ class ExpedienteView(APIView):
 
     def get(self, request, token):
         alert = alert_for_token(token)
+        if not alert.member.can_act:
+            # An observer reads the ONG's draft, without the signer's data; the PDF carries it, so it stays closed.
+            if request.query_params.get('formato') == 'pdf':
+                require_can_act(alert.member)
+            return Response(expediente_payload(existing_expediente(alert), alert))
         expediente = _open(alert)
         if request.query_params.get('formato') == 'pdf':
             return _pdf_response(expediente)

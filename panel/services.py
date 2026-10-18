@@ -31,10 +31,20 @@ def default_ong() -> Ong | None:
     return ongs.order_by('pk').first()
 
 
+def join_role(phone: str) -> str:
+    """An admin (a member of the internal team) joins with full rights; anyone else as DEFAULT_ONG_JOIN_ROLE."""
+    if Member.objects.filter(phone=phone, active=True, ong__internal=True).exists():
+        return Member.Role.MEMBER
+    role = settings.DEFAULT_ONG_JOIN_ROLE
+    return role if role in Member.Role.values else Member.Role.OBSERVER
+
+
 def member_for_phone(phone: str) -> tuple[Member, bool]:
     """The ONG member behind a condorin.pe sign in. Returns (member, joined_now).
 
-    Someone already in an ONG keeps it. Anyone else joins the default ONG (demo only, see default_ong).
+    Someone already in an ONG keeps it, with the role they have. Anyone else joins the default ONG (demo only,
+    see default_ong) as an observer: they see the panel and get the alerts, but cannot open, edit or sign
+    an expediente in the name of an ONG that never invited them (join_role, DEFAULT_ONG_JOIN_ROLE).
     """
     member = (Member.objects.select_related('ong')
               .filter(phone=phone, active=True, ong__active=True, ong__internal=False).order_by('pk').first())
@@ -45,7 +55,7 @@ def member_for_phone(phone: str) -> tuple[Member, bool]:
         raise NoOngAvailable()
     # The name is asked in the first expediente ("quién firma") and remembered from there.
     member, created = Member.objects.select_related('ong').get_or_create(
-        ong=ong, phone=phone, defaults={'full_name': ''},
+        ong=ong, phone=phone, defaults={'full_name': '', 'role': join_role(phone)},
     )
     if not member.active:
         raise PermissionDenied('Tu acceso a esta ONG está desactivado. Escríbele a tu ONG.')

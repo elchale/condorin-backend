@@ -18,6 +18,23 @@ ALERT_MIN_CONFIDENCE = env.float('ALERT_MIN_CONFIDENCE', default=0.5)
 # TODO(prod): while detections/limits.py HACKATHON_ALERT_WINDOW_DAYS is set it overrides this (today or yesterday).
 ALERT_RECENT_DAYS = env.int('ALERT_RECENT_DAYS', default=7)
 
+
+def _optional(name: str, default: str) -> str | None:
+    """The variable as text, or None when it is set to an empty value or 'none' (the limit is off)."""
+    value = env(name, default=default).strip()
+    return None if value.lower() in ('', 'none', 'off') else value
+
+
+# TODO(prod): hackathon limits (detections/limits.py). Set a variable to 'none' to turn that limit off.
+# Only scenes captured today or yesterday (America/Lima calendar days) alert.
+_window = _optional('HACKATHON_ALERT_WINDOW_DAYS', '2')
+HACKATHON_ALERT_WINDOW_DAYS = int(_window) if _window else None
+# Once this many WhatsApp alerts have been sent in total, no further alert goes out.
+_cap = _optional('HACKATHON_MAX_ALERT_MESSAGES', '50')
+HACKATHON_MAX_ALERT_MESSAGES = int(_cap) if _cap else None
+# Only alerts sent from this instant (ISO 8601 with offset) count toward the cap.
+HACKATHON_CAP_SINCE = _optional('HACKATHON_CAP_SINCE', '2026-10-18T07:50:00-05:00')
+
 # WhatsApp Cloud API, Qolca Solutions WABA (same number as the condorin.pe sign in).
 WA_GRAPH_URL = env('WA_GRAPH_URL', default='https://graph.facebook.com/v23.0')
 WA_TOKEN = env('WA_TOKEN', default='')

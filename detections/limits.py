@@ -12,13 +12,24 @@ from django.utils import timezone
 
 from .models import Alert
 
+
+def _since(text: str | None) -> datetime | None:
+    if not text:
+        return None
+    value = datetime.fromisoformat(text)
+    return value if timezone.is_aware(value) else timezone.make_aware(value)  # naive: Lima time
+
+
 # TODO(prod): remove before real production. Hackathon safety limits requested by Carlos on 2026-10-18.
-# Only scenes captured today or yesterday (America/Lima calendar days) alert.
-HACKATHON_ALERT_WINDOW_DAYS = 2
-# Once this many WhatsApp alerts have been sent in total, no further alert goes out.
-HACKATHON_MAX_ALERT_MESSAGES = 50
+# The values come from the settings (env HACKATHON_ALERT_WINDOW_DAYS, HACKATHON_MAX_ALERT_MESSAGES and
+# HACKATHON_CAP_SINCE; 'none' turns one off), read once at import like the constants they replaced.
+# Only scenes captured today or yesterday (America/Lima calendar days) alert. Default 2.
+HACKATHON_ALERT_WINDOW_DAYS = settings.HACKATHON_ALERT_WINDOW_DAYS
+# Once this many WhatsApp alerts have been sent in total, no further alert goes out. Default 50.
+HACKATHON_MAX_ALERT_MESSAGES = settings.HACKATHON_MAX_ALERT_MESSAGES
 # Only alerts sent from this instant count toward the cap (reset before the live demo). None counts every alert.
-HACKATHON_CAP_SINCE = datetime(2026, 10, 18, 7, 50, tzinfo=timezone.get_fixed_timezone(-300))
+# Default 2026-10-18 07:50 Lima.
+HACKATHON_CAP_SINCE = _since(settings.HACKATHON_CAP_SINCE)
 
 CAPPED_ERROR = f'Límite de {HACKATHON_MAX_ALERT_MESSAGES} mensajes del hackathon alcanzado'
 

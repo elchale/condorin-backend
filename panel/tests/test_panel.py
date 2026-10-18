@@ -140,7 +140,7 @@ def test_link_sign_in_needs_the_secret(client, scene):
 @pytest.mark.parametrize('change', [
     {'status': Alert.Status.PANEL},
     {'status': Alert.Status.FAILED},
-    {'sent_at': timezone.now() - timedelta(days=8)},
+    {'created': timezone.now() - timedelta(days=8)},
     {'expires_at': timezone.now() - timedelta(minutes=1)},
 ])
 def test_link_sign_in_refused(client, scene, change):
@@ -167,3 +167,21 @@ def test_new_member_gets_only_the_welcome(client, scene, sent, settings, django_
     with django_capture_on_commit_callbacks(execute=True):
         call(client, 'get', '/api/v1/panel', phone='51911222333')
     assert len(sent) == before
+
+
+@pytest.mark.parametrize('demo_day', ['2026-07-10', '2027-03-01'])
+def test_link_sign_in_window_runs_on_the_real_clock(client, scene, demo_day):
+    """The demo clock moves sent_at, not the security window: a fresh link signs in whatever the day shows."""
+    from core import clock
+
+    alert = Alert.objects.get(member__phone='51936282808')
+    clock.set_demo(demo_day)
+    try:
+        Alert.objects.filter(pk=alert.pk).update(sent_at=clock.now())
+        res = call(client, 'post', '/api/v1/panel/enlace', phone=None, data={'token': alert.token})
+        assert res.status_code == 200
+        Alert.objects.filter(pk=alert.pk).update(created=timezone.now() - timedelta(days=8))
+        res = call(client, 'post', '/api/v1/panel/enlace', phone=None, data={'token': alert.token})
+        assert res.status_code == 404
+    finally:
+        clock.set_demo(None)

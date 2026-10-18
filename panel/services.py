@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Prefetch, QuerySet
+from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
 
 from core import clock, gcs
@@ -130,13 +131,17 @@ def sign_in_by_link(token: str) -> Member:
     """The member a WhatsApp alert link was sent to, if that link may still sign them in.
 
     Only links actually delivered by WhatsApp count (whoever holds them holds that phone's chat), and
-    only for LINK_SIGN_IN_DAYS after delivery. Anything else gets the same 404, so nothing leaks.
+    only for LINK_SIGN_IN_DAYS. Anything else gets the same 404, so nothing leaks.
+
+    The window is a security window, so it runs on the real clock: from the alert row's real creation
+    (`created`, it is sent right after), never from `sent_at`, which follows the demo clock. Moving the demo
+    day neither stretches nor cuts it.
     """
     alert = (Alert.objects.select_related('member__ong')
              .filter(token=token, status=Alert.Status.SENT, member__active=True, member__ong__active=True)
              .first())
     window = timedelta(days=settings.LINK_SIGN_IN_DAYS)
-    if alert is None or alert.is_expired or not alert.sent_at or clock.now() > alert.sent_at + window:
+    if alert is None or alert.is_expired or not alert.sent_at or timezone.now() > alert.created + window:
         raise NotFound('Este enlace no permite iniciar sesión.')
     if alert.member.ong.internal:
         # An admin's alert signs them in as their own ONG member, never as the hidden internal team.

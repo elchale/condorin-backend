@@ -145,8 +145,8 @@ time of day, and keeps ticking from there (`2026-07-10T09:00` pins the start ins
 - Every payload carries `clock`: `{"now", "today", "label", "simulated", "timezone"}`. The SPA shows it on the panel
   (date, ticking Lima time, a "fecha simulada" tag) and uses `now` for "últimos 30 días" and "hace 5 min".
 - Security windows stay on the real clock: alert link expiry (`ALERT_LINK_DAYS`), WhatsApp codes and signed
-  sessions. The link sign in window (`LINK_SIGN_IN_DAYS` after `sent_at`) follows the clock, so a demo alert signs
-  in while the demo day is set; after `--real` those links are older than the window and no longer sign in.
+  sessions, and the link sign in window (`LINK_SIGN_IN_DAYS` from the real moment the alert row was created, not
+  its demo `sent_at`), so a demo alert signs in for 7 real days whatever day the clock shows.
 - The state is one row read through the process cache for 5 s, so a request costs at most one extra query and
   every instance follows a change within seconds. The public map cache key includes the day.
 

@@ -9,11 +9,12 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from core import clock, gcs
 from core.exceptions import BaseError
 from detections.models import Alert, Detection, SatelliteImage, default_expiry
-from detections.services import dispatch, is_simulated
 from expedientes.autodraft import status_label  # noqa: F401  (the panel and the activity feed label)
 from expedientes.models import Expediente
 from expedientes.services import missing_fields
 from ongs.models import Member, Ong
+
+from .welcome import send_welcome
 
 INCIDENT_LIMIT = 50
 
@@ -50,26 +51,9 @@ def member_for_phone(phone: str) -> tuple[Member, bool]:
     if not member.active:
         raise PermissionDenied('Tu acceso a esta ONG está desactivado. Escríbele a tu ONG.')
     if created:
-        send_latest_alert(member)
+        # Only a greeting. Joining never sends an event; those go out by hand (manage.py send_event).
+        transaction.on_commit(lambda: send_welcome(phone))
     return member, created
-
-
-def send_latest_alert(member: Member) -> Alert | None:
-    """A new member gets the ONG's most recent alert by WhatsApp at once, so they see how Ojo de Cóndor works.
-
-    Only a real recent scene (captured within ALERT_RECENT_DAYS, not simulated) is sent; otherwise nothing.
-    """
-    since = clock.now() - timedelta(days=settings.ALERT_RECENT_DAYS)
-    image = (clock.visible(SatelliteImage.objects)
-             .filter(river__in=member.ong.rivers.all(), captured_at__gte=since,
-                     detections__confidence__gte=settings.ALERT_MIN_CONFIDENCE)
-             .order_by('-captured_at').first())
-    if image is None or is_simulated(image):
-        return None
-    alert, created = Alert.objects.get_or_create(image=image, member=member)
-    if created:
-        transaction.on_commit(lambda: dispatch(image.pk))
-    return alert
 
 
 def incident_images(ong: Ong) -> QuerySet[SatelliteImage]:
@@ -105,7 +89,7 @@ def incidents(ong: Ong) -> list[tuple[SatelliteImage, list[Detection], Expedient
 
 def incident_totals(ong: Ong) -> dict:
     """Counts over every incident of the ONG (not just one page), computed in the database."""
-    images = incident_images(ong).order_by()
+    images = incident_images(ong).order_by().prefetch_related(None)
     total = images.count()
     by_status = dict(
         Expediente.objects.filter(ong=ong, image__in=images.values('pk'))

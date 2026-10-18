@@ -64,7 +64,7 @@ five for the browser sign in (map and static SPA), and the pages.
 | GET | `/api/v1/expedientes/<token>` | ONG member | Opens (and on first tap creates) the expediente, with everything the page needs. `?formato=pdf` returns the PDF. |
 | PATCH | `/api/v1/expedientes/<token>` | ONG member | Any subset of the fields (autosave), `authorities: [codes]`, `filings: [{authority, receipt_number, filed_at}]`, `reopen: true`. |
 | POST | `/api/v1/expedientes/<token>/enviar` | ONG member | `{}` checks completeness and sends the code (202). `{"code": "123456"}` finalizes and emails (200). |
-| GET | `/api/v1/panel` | condorin.pe server | `Authorization: Bearer <PANEL_API_SECRET>`, `X-Condorin-Phone`. The member, their ONG and its incidents with the next action. Joins the default ONG on first call (demo only). |
+| GET | `/api/v1/panel` | condorin.pe server | `Authorization: Bearer <PANEL_API_SECRET>`, `X-Condorin-Phone`. The member, their ONG and its incidents with the next action. Joins the default ONG on first call (demo only) and sends the WhatsApp welcome, never an event. |
 | POST | `/api/v1/panel/incidentes/<id>/expediente` | condorin.pe server | Same headers. The member's personal expediente token for that incident, created if they had no alert. |
 | POST | `/api/v1/panel/enlace` | condorin.pe server | `{"token"}` → the member a WhatsApp alert link may sign in (sent, under `LINK_SIGN_IN_DAYS`), else 404. |
 | GET | `/api/v1/panel/actividad?limit=N` | condorin.pe server | Secret only, no phone. The admin live feed: the last N scenes received (default 20, max 50), newest first, each with its detections, the ONGs that watch the river, their alerts and expediente, and the 8 decision steps (contract in `condorin/src/lib/admin/activity.ts`). |
@@ -161,6 +161,8 @@ python manage.py purge_demo_events                   # lists demo and mock scene
 python manage.py set_today 2026-07-10                # the API lives on that day: hides later scenes, sends that day's alerts (--real to return)
 python manage.py set_admin_phone admin@example.org 51987654321   # admin gets every recent alert (--clear to stop)
 python manage.py create_alert_template               # prints the WhatsApp template; --submit sends it to Meta
+python manage.py create_welcome_template             # same for the welcome a person gets on joining (no event)
+python manage.py send_event 42                       # who would get scene 42 by hand; --send sends it, --phone 519... only them, --resend again
 python -X utf8 manage.py export_mapa > ../mapa-data/mapa-snapshot.json   # offline snapshot of GET /api/v1/mapa
 python -X utf8 manage.py refresh_fuentes   # fetch the open data feeds now (--source firms, --force); writes only FeedCache
 curl -X POST -H "Authorization: Bearer $PANEL_API_SECRET" http://localhost:8000/api/v1/fuentes/refresh   # the same over HTTP

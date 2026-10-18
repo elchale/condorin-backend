@@ -85,7 +85,7 @@ def test_open_expediente_from_panel(client, scene):
     res = call(client, 'post', f'/api/v1/panel/incidentes/{scene.pk}/expediente', phone=newcomer)
     assert res.status_code == 200
     alert = Alert.objects.get(token=res.json()['token'])
-    # Joining already queued the welcome alert for this scene, so the panel reuses that same token.
+    # Joining sends no event, so the panel opens the expediente with a fresh (never sent) alert.
     assert alert.member.phone == newcomer and Alert.objects.filter(member=alert.member).count() == 1
 
     # The token opens the shared expediente; the newcomer's name is asked there and remembered.
@@ -151,13 +151,13 @@ def test_link_sign_in_unknown_token(client, ong):
     assert call(client, 'post', '/api/v1/panel/enlace', phone=None, data={'token': 'nope'}).status_code == 404
 
 
-def test_new_member_gets_the_latest_alert_by_whatsapp(client, scene, sent, django_capture_on_commit_callbacks):
+def test_new_member_gets_only_the_welcome(client, scene, sent, settings, django_capture_on_commit_callbacks):
+    settings.ALERTS_INLINE = True
     with django_capture_on_commit_callbacks(execute=True):
         call(client, 'get', '/api/v1/panel', phone='51911222333')
-    phone, template, _ = sent[-1]
-    assert phone == '51911222333' and template == 'condorin_evento_v2'
-    alert = Alert.objects.get(member__phone='51911222333')
-    assert alert.image == scene and alert.status == Alert.Status.SENT
+    assert sent[-1] == ('51911222333', 'condorin_bienvenida', [])
+    # No event: joining never creates or sends an alert.
+    assert not Alert.objects.filter(member__phone='51911222333').exists()
 
     # Only on joining: later visits do not resend it.
     before = len(sent)

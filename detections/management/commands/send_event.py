@@ -42,14 +42,16 @@ class Command(BaseCommand):
         if send:
             pin_evidence(image)
         for member in members:
-            alert, _ = Alert.objects.get_or_create(image=image, member=member)
+            alert = Alert.objects.filter(image=image, member=member).first()
             label = f'{member.phone} {member.full_name or "(sin nombre)"} [{member.ong.name}]'
-            if alert.status == Alert.Status.SENT and not resend:
+            if alert and alert.status == Alert.Status.SENT and not resend:
                 self.stdout.write(f'  skip {label}: already sent')
                 continue
             if not send:
                 self.stdout.write(f'  would send {label}')
                 continue
+            # A dry run creates nothing: a pending row would be picked up by send_pending_alerts.
+            alert = alert or Alert.objects.create(image=image, member=member)
             send_alert(alert)
             alert.refresh_from_db()
             self.stdout.write(f'  {alert.status} {label} {alert.error}'.rstrip())

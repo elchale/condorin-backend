@@ -26,6 +26,8 @@ WA_WABA_ID = env('WA_WABA_ID', default='')
 WA_ALERT_TEMPLATE = env('WA_ALERT_TEMPLATE', default='condorin_evento_v2')
 # Approved AUTHENTICATION template used to confirm the person before an expediente is sent.
 WA_CODE_TEMPLATE = env('WA_CODE_TEMPLATE', default='condorin_codigo')
+# UTILITY template a person gets on first joining an ONG (see `manage.py create_welcome_template`). Empty: none.
+WA_WELCOME_TEMPLATE = env('WA_WELCOME_TEMPLATE', default='condorin_bienvenida')
 WA_TEMPLATE_LANG = env('WA_TEMPLATE_LANG', default='es')
 # Header image when the crop cannot be signed (the WhatsApp preview image of condorin.pe).
 WA_ALERT_FALLBACK_IMAGE = env('WA_ALERT_FALLBACK_IMAGE', default='https://www.condorin.pe/opengraph-image.jpg')

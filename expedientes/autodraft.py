@@ -13,6 +13,7 @@ from django.db import transaction
 from detections.models import SatelliteImage
 from ongs.models import Ong
 
+from . import redaccion
 from .drafting import FIELD_OBSERVATIONS, draft_evidence_links, draft_facts, draft_place_reference, draft_risks
 from .models import Expediente
 from .services import default_authorities, signer
@@ -41,6 +42,7 @@ def legal_representative(ong: Ong):
 def prefill(image: SatelliteImage, ong: Ong) -> dict:
     """The same prefill the link opening writes, with the ONG's legal representative as signer when known."""
     rep = legal_representative(ong)
+    place = draft_place_reference(image)
     return {
         'ong_name': ong.name,
         'ong_ruc': ong.ruc,
@@ -50,8 +52,9 @@ def prefill(image: SatelliteImage, ong: Ong) -> dict:
         'rep_dni': rep.dni if rep else '',
         'rep_position': rep.position if rep else '',
         'rep_phone': rep.phone if rep else '',
-        'facts': draft_facts(image),
-        'place_reference': draft_place_reference(image),
+        # Claude polishes the hechos only behind EXPEDIENTE_IA_ENABLED (off by default), as on the link.
+        'facts': redaccion.improve_facts(draft_facts(image), place),
+        'place_reference': place,
         'field_observations': FIELD_OBSERVATIONS,
         'field_evidence_links': draft_evidence_links(image),
         'suspects': 'Por identificar.',

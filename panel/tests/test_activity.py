@@ -55,7 +55,10 @@ def test_alerted_event(client, post_detection, payload, ong, sent):
     assert not any(' - ' in s['detail'] or '—' in s['detail'] for s in event['steps'])
 
     viva = event['ongs'][0]
-    assert viva['name'] == 'Amazonía Viva' and viva['members'] == 2 and viva['expediente'] is None
+    assert viva['name'] == 'Amazonía Viva' and viva['members'] == 2
+    # The automatic draft from ingest: there, but nobody opened it yet.
+    assert viva['expediente']['status_label'] == 'Borrador listo para revisar'
+    assert steps['opened']['detail'] == 'El borrador automático está listo, nadie lo abrió todavía.'
     assert {a['phone_hint'] for a in viva['alerts']} == {'+51 *** *** 808', '+51 *** *** 777'}
     assert {a['status'] for a in viva['alerts']} == {'sent'}
     assert event['authorities_suggested']

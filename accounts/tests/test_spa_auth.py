@@ -161,7 +161,8 @@ def test_me_pages_incidents_and_counts_them_all(client, ong, sent, post_detectio
     me = client.get('/api/v1/me', **bearer).json()
     assert len(me['incidents']) == 10
     assert me['pagination']['count'] == 13 and me['pagination']['next'] and me['pagination']['previous'] is None
-    assert me['totals'] == {'incidents': 13, 'without_expediente': 12, 'draft': 1, 'ready': 0, 'filed': 0}
+    # Every scene has its automatic draft from ingest, so none is left without an expediente.
+    assert me['totals'] == {'incidents': 13, 'without_expediente': 0, 'draft': 13, 'ready': 0, 'filed': 0}
 
     more = client.get('/api/v1/me/incidentes?page=2', **bearer).json()
     assert set(more) == {'count', 'next', 'previous', 'results'}

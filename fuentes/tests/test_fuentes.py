@@ -12,7 +12,8 @@ from fuentes.sources import REGISTRY, TILE_LAYERS, firms, openmeteo, sentinel
 
 pytestmark = pytest.mark.django_db
 
-TOP_KEYS = {'generated_at', 'sources', 'fires', 'satellite', 'weather', 'tile_layers'}
+TOP_KEYS = {'generated_at', 'sources', 'fires', 'satellite', 'weather', 'tile_layers', 'rivers', 'fires_near_rivers',
+            'summary'}
 SOURCE_KEYS = {'fetched_at', 'ok', 'ttl_s', 'error', 'attribution', 'url'}
 
 FIRE = {'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [-70.1, -12.9]},
@@ -34,6 +35,7 @@ def fake_fetch(monkeypatch, settings):
         'firms': {'fires': {'type': 'FeatureCollection', 'features': [FIRE]}, 'in_bbox': 1},
         'sentinel': {'rivers': {'malinowski': SAT}},
         'open-meteo': {'rivers': {'malinowski': WEATHER}},
+        'glofas': {'rivers': {'malinowski': {'discharge': None}}},
     }
     for source_id, module in REGISTRY.items():
         def fetch(meter=None, source_id=source_id):
@@ -55,7 +57,7 @@ def test_payload_shape(client, fake_fetch):
     assert resp.status_code == 200
     body = resp.json()
     assert set(body) == TOP_KEYS
-    assert set(body['sources']) == {'firms', 'sentinel', 'open-meteo'}
+    assert set(body['sources']) == {'firms', 'sentinel', 'open-meteo', 'glofas'}
     for entry in body['sources'].values():
         assert set(entry) == SOURCE_KEYS and entry['ok'] is True and entry['error'] is None
     assert body['fires']['features'] == [FIRE]
@@ -69,8 +71,8 @@ def test_payload_shape(client, fake_fetch):
 def test_empty_cache_answers_at_once_and_refreshes(client, fake_fetch):
     body = client.get('/api/v1/fuentes').json()
     assert body['fires']['features'] == [] and body['sources']['firms']['ok'] is False
-    assert sorted(fake_fetch) == ['firms', 'open-meteo', 'sentinel']
-    assert FeedCache.objects.filter(ok=True).count() == 3
+    assert sorted(fake_fetch) == ['firms', 'glofas', 'open-meteo', 'sentinel']
+    assert FeedCache.objects.filter(ok=True).count() == 4
 
 
 def test_stale_row_triggers_one_refresh(client, fake_fetch):
@@ -128,9 +130,9 @@ def test_cors_gzip_cache_headers_and_etag(client, fake_fetch):
 
 def test_refresh_command(fake_fetch, capsys):
     call_command('refresh_fuentes')
-    assert sorted(fake_fetch) == ['firms', 'open-meteo', 'sentinel']
+    assert sorted(fake_fetch) == ['firms', 'glofas', 'open-meteo', 'sentinel']
     call_command('refresh_fuentes')  # all fresh now
-    assert len(fake_fetch) == 3
+    assert len(fake_fetch) == 4
     call_command('refresh_fuentes', '--source', 'firms', '--force')
     assert fake_fetch[-1] == 'firms'
     assert '1 fires kept of 1 in bbox' in capsys.readouterr().out
@@ -227,7 +229,7 @@ def test_sentinel1_passes_and_next_estimate():
     late = sentinel.summarize_s1(products, datetime(2026, 10, 30, tzinfo=UTC))
     assert late['s1_next_estimate'] == '2026-10-30T10:14:29Z'  # rolled forward past missed passes
     assert sentinel.summarize_s1([], now) == {'s1_last': None, 's1_last_id': None, 's1_passes_30d': 0,
-                                              's1_next_estimate': None}
+                                              's1_next_estimate': None, 'next_passes': []}
 
 
 def test_sentinel2_cloud_summary():
@@ -248,7 +250,8 @@ def test_openmeteo_rain_windows():
                 'hourly': {'time': [h.strftime('%Y-%m-%dT%H:%M') for h in hours],
                            'precipitation': [1.0] * len(hours)}}
     out = openmeteo.summarize(location)
-    assert out == {'rain_mm_7d': 168.0, 'rain_mm_24h': 24.0, 'temp_c': 29.1, 'updated_at': '2026-10-17T12:00:00Z'}
+    assert out == {'rain_mm_7d': 168.0, 'rain_mm_24h': 24.0, 'temp_c': 29.1, 'updated_at': '2026-10-17T12:00:00Z',
+                   'forecast': [], 'rain_mm_next_3d': None}
 
 
 @pytest.fixture(autouse=True)

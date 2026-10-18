@@ -1,7 +1,7 @@
 """The live open data sources. Each module has ID, TTL_S, ATTRIBUTION, URL and fetch(meter) -> dict."""
-from . import firms, openmeteo, sentinel
+from . import firms, glofas, openmeteo, sentinel
 
-REGISTRY = {module.ID: module for module in (firms, sentinel, openmeteo)}
+REGISTRY = {module.ID: module for module in (firms, sentinel, openmeteo, glofas)}
 
 # Raster layers the map loads straight from Global Forest Watch (checked unauthenticated on 2026-10-18).
 # The backend never fetches them, it only advertises them. `render_type=true_color` returns visible

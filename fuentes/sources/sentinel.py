@@ -2,7 +2,8 @@
 
 Per river: Sentinel-1 GRD passes in the last 30 days, the last one, and an estimate of the next one
 (the last pass of each relative orbit plus the repeat cycle: 12 days, or 6 when two platforms share
-that orbit); Sentinel-2 L2A scenes, the last one, its cloud cover and how many were under 25 % cloud.
+that orbit, plus the next few such passes as `next_passes`); Sentinel-2 L2A scenes, the last one,
+its cloud cover and how many were under 25 % cloud.
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,31 @@ CLEAR_CLOUD = 25.0
 MAX_BYTES = 3 * 1024 * 1024
 PRODUCT_TYPE = {'SENTINEL-1': 'IW_GRDH_1S', 'SENTINEL-2': 'S2MSI2A'}
 WORKERS = 4
+NEXT_PASSES = 3
+STORED_PASSES = 6  # stored ahead so the served list still has 3 after a few hours (the view drops past ones)
+
+
+def platform_name(serial) -> str:
+    return f'Sentinel-1{serial}' if serial else 'Sentinel-1'
+
+
+def next_in_orbit(orbit_passes: list[dict], now: datetime) -> list[tuple[datetime, str]]:
+    """The next passes of one relative orbit after `now`: the last pass plus the repeat cycle, 12 days,
+    or 6 when two platforms share the orbit (they then alternate, the other platform flies next)."""
+    ordered = sorted(orbit_passes, key=lambda p: p['start'])
+    last = ordered[-1]
+    serial = last['attrs'].get('platformSerialIdentifier')
+    others = [p['attrs'].get('platformSerialIdentifier') for p in reversed(ordered)
+              if p['attrs'].get('platformSerialIdentifier') != serial]
+    rotation = [others[0], serial] if others else [serial]
+    step = timedelta(days=12 // len(rotation))
+    out, at, k = [], last['start'], 0
+    while len(out) < STORED_PASSES:
+        at += step
+        if at > now:
+            out.append((at, platform_name(rotation[k % len(rotation)])))
+        k += 1
+    return out
 
 
 def iso(value: datetime | None) -> str | None:
@@ -60,20 +86,16 @@ def summarize_s1(products: list[dict], now: datetime) -> dict:
     by_orbit = {}
     for p in passes.values():
         by_orbit.setdefault(p['attrs'].get('relativeOrbitNumber'), []).append(p)
-    estimates = []
+    upcoming = []
     for orbit_passes in by_orbit.values():
-        last = max(p['start'] for p in orbit_passes)
-        platforms = {p['attrs'].get('platformSerialIdentifier') for p in orbit_passes}
-        step = timedelta(days=6 if len(platforms) >= 2 else 12)
-        nxt = last + step
-        while nxt <= now:
-            nxt += step
-        estimates.append(nxt)
+        upcoming += next_in_orbit(orbit_passes, now)
+    upcoming.sort(key=lambda u: u[0])
     latest = max(passes.values(), key=lambda p: p['start'], default=None)
     return {'s1_last': iso(latest['start']) if latest else None,
             's1_last_id': latest['name'] if latest else None,
             's1_passes_30d': len(passes),
-            's1_next_estimate': iso(min(estimates)) if estimates else None}
+            's1_next_estimate': iso(upcoming[0][0]) if upcoming else None,
+            'next_passes': [{'at': iso(at), 'platform': platform} for at, platform in upcoming[:STORED_PASSES]]}
 
 
 def summarize_s2(products: list[dict]) -> dict:

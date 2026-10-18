@@ -69,7 +69,8 @@ five for the browser sign in (map and static SPA), and the pages.
 | POST | `/api/v1/panel/enlace` | condorin.pe server | `{"token"}` → the member a WhatsApp alert link may sign in (sent, under `LINK_SIGN_IN_DAYS`), else 404. |
 | GET | `/api/v1/panel/actividad?limit=N` | condorin.pe server | Secret only, no phone. The admin live feed: the last N scenes received (default 20, max 50), newest first, each with its detections, the ONGs that watch the river, their alerts and expediente, and the 8 decision steps (contract in `condorin/src/lib/admin/activity.ts`). |
 | GET | `/api/v1/mapa` | anyone | The public map (contract A in `hacktheandes/mapa-data/CONTRACT.md`): totals (with `alerts_opened` and `users` as usage counters), rivers, scenes, detections as GeoJSON, a monthly timeline and an anonymized activity feed. No names, phones, tokens or signed URLs. With a valid `Authorization: Bearer <session>` it adds `mine` and turns private. `manage.py export_mapa` prints the same JSON. |
-| GET | `/api/v1/fuentes` | anyone | Live open data for the map (contract D): NASA FIRMS VIIRS fires in the Peruvian Amazon (7 days, max 5,000), Sentinel 1 and 2 passes per river from the Copernicus catalogue (last, count, next estimate, cloud), Open-Meteo rain and temperature per river, and Global Forest Watch tile layers. Served from the `FeedCache` table; stale sources refresh on a background thread. Any origin, gzip, 5 min cache. |
+| GET | `/api/v1/fuentes` | anyone | Live open data for the map (contract D): NASA FIRMS VIIRS fires on the Amazon lowland side (lon -78.5 to -68, lat -13.5 to 0.5, 7 days, the 2,000 hottest) plus `fires_near_rivers` (fires within 25 km of each river), Sentinel 1 and 2 passes per river from the Copernicus catalogue (last, count, cloud, `next_passes`: the next 3 estimated radar passes), Open-Meteo rain and temperature per river with a 7 day `forecast`, GloFAS river discharge per river (`rivers[slug].discharge`: today, mean, trend, 14 day series, from the Open-Meteo Flood API), one Spanish `summary` sentence per river, and Global Forest Watch tile layers. Served from the `FeedCache` table. Any origin, gzip, 5 min cache. |
+| POST | `/api/v1/fuentes/refresh` | GitHub workflow | `Authorization: Bearer <PANEL_API_SECRET>`. Refreshes the stale sources now (`?force=1`: all of them) on parallel threads and returns each one's status (`ok`, `failed`, `fresh`, `busy`, or `running` when it outlasts 45 s and finishes in the background). 502 when every source it tried failed. |
 | POST | `/api/v1/auth/codigo` | map SPA | `{"phone", "consent": true}` → 202 `{"phone", "pending"}`. Sends `condorin_codigo` by WhatsApp. One code per phone every 45 s, 10 per IP per hour. |
 | POST | `/api/v1/auth/entrar` | map SPA | `{"pending", "code"}` → `{"token", "member", "ong"}`. 5 attempts per code. Records the sign in on `accounts_member` and joins the default ONG, like condorin.pe. |
 | POST | `/api/v1/auth/enlace` | SPA | `{"token": <alert token>}` → the same as `/auth/entrar` with `"via": "link"` and a 7 day session. Same rules and same 404 as `/api/v1/panel/enlace`. |
@@ -141,6 +142,7 @@ python manage.py set_admin_phone admin@example.org 51987654321   # admin gets ev
 python manage.py create_alert_template               # prints the WhatsApp template; --submit sends it to Meta
 python -X utf8 manage.py export_mapa > ../mapa-data/mapa-snapshot.json   # offline snapshot of GET /api/v1/mapa
 python -X utf8 manage.py refresh_fuentes   # fetch the open data feeds now (--source firms, --force); writes only FeedCache
+curl -X POST -H "Authorization: Bearer $PANEL_API_SECRET" http://localhost:8000/api/v1/fuentes/refresh   # the same over HTTP
 python scripts/latency.py https://api.condorin.pe /healthz/ /api/v1/mapa --n 20   # p50, p95 and gzip bytes
 pytest
 ruff check .
@@ -215,6 +217,13 @@ gcloud run deploy condorin-api --source . --region $REGION --allow-unauthenticat
 - **Retries**: create a Cloud Run job from the same image running `python manage.py send_pending_alerts`
   and trigger it from Cloud Scheduler (every 15 minutes, say). With more than one instance, run
   migrations the same way (a job running `python manage.py migrate`) and set `RUN_MIGRATIONS=0` on the service.
+- **Open data feeds**: the backend pulls FIRMS, Sentinel, Open-Meteo and GloFAS itself. `.github/workflows/refresh-feeds.yml` calls
+  `POST /api/v1/fuentes/refresh` every 30 minutes (and on demand, with a `force` input) using the
+  `PANEL_API_SECRET` repository secret, which must equal the service's `PANEL_API_SECRET`
+  (`gh secret set PANEL_API_SECRET --repo elchale/condorin-backend`). Each source refetches once its TTL is
+  over (FIRMS 1 h, Open-Meteo 3 h, Sentinel and GloFAS 6 h). GitHub may delay scheduled runs, so the
+  fallback stays: a visitor who finds a stale source gets the cached data at once and starts one
+  background refresh (stale while revalidate). After a deploy, `refresh_fuentes --force` warms everything.
 - **Domain**: `gcloud beta run domain-mappings create --service condorin-api --domain api.condorin.pe --region $REGION`,
   then add the DNS records it prints. Not every region supports domain mappings.
 - **Vercel**: the frontend calls `https://api.condorin.pe` (or the `run.app` URL until the domain is live).

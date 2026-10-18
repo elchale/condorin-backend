@@ -1,14 +1,18 @@
 """NASA FIRMS active fires (VIIRS 375 m), the public 7 day CSV exports for South America. No key.
 
-Each file is about 5 MB; it is streamed and only rows inside the Peruvian Amazon box are parsed fully.
+Each file is about 5 MB; it is streamed and only rows inside the Amazon lowland box are parsed fully.
+The box drops the Andes and the coast (farm and grass burns there are not mining). Besides the points
+(the 2,000 hottest), `near_rivers` counts every deduplicated fire within 25 km of each river point.
 """
 import csv
 import logging
+import math
 from datetime import UTC, datetime, timedelta
 
 from django.utils import timezone
 
 from fuentes.http import Meter, stream_lines
+from fuentes.rivers import river_points
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +28,10 @@ FILES = {
     'NOAA-21': f'{BASE}/noaa-21-viirs-c2/csv/J2_VIIRS_C2_South_America_7d.csv',
 }
 MAX_BYTES = 20 * 1024 * 1024
-MAX_FIRES = 5000
-# Peruvian Amazon (and a margin over the borders): lon -81 to -68, lat -18.5 to 0.5.
-BBOX = (-81.0, -18.5, -68.0, 0.5)
+MAX_FIRES = 2000
+# Amazon lowland side of Peru (and a margin over the borders): lon -78.5 to -68, lat -13.5 to 0.5.
+BBOX = (-78.5, -13.5, -68.0, 0.5)
+NEAR_KM = 25.0
 CONFIDENCE = {'nominal': 'n', 'low': 'l', 'high': 'h', 'n': 'n', 'l': 'l', 'h': 'h'}
 
 
@@ -64,15 +69,41 @@ def parse_rows(lines, since: datetime, bbox=BBOX) -> list[dict]:
     return fires
 
 
-def select(fires: list[dict], limit: int = MAX_FIRES) -> list[dict]:
-    """Dedupe (about 100 m and the same day, keep the hottest) and keep the `limit` hottest, newest first."""
+def dedupe(fires: list[dict]) -> list[dict]:
+    """One fire per spot (about 100 m) and day, the hottest: three satellites see the same fire."""
     best = {}
     for f in fires:
         key = (round(f['lat'], 3), round(f['lon'], 3), f['at'].date())
         if key not in best or f['frp'] > best[key]['frp']:
             best[key] = f
-    top = sorted(best.values(), key=lambda f: f['frp'], reverse=True)[:limit]
+    return list(best.values())
+
+
+def select(fires: list[dict], limit: int = MAX_FIRES) -> list[dict]:
+    """Dedupe and keep the `limit` hottest, newest first."""
+    top = sorted(dedupe(fires), key=lambda f: f['frp'], reverse=True)[:limit]
     return sorted(top, key=lambda f: f['at'], reverse=True)
+
+
+def km_between(lat1, lon1, lat2, lon2) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 2 * 6371.0 * math.asin(math.sqrt(a))
+
+
+def near_rivers(fires: list[dict], points, radius_km: float = NEAR_KM) -> dict:
+    """{slug: {count_7d, max_frp, last_at, radius_km}} over deduplicated fires within radius_km."""
+    fires = dedupe(fires)
+    out = {}
+    for slug, lat, lon in points:
+        close = [f for f in fires if abs(f['lat'] - lat) < 0.5 and abs(f['lon'] - lon) < 0.5
+                 and km_between(lat, lon, f['lat'], f['lon']) <= radius_km]
+        out[slug] = {'count_7d': len(close),
+                     'max_frp': max((f['frp'] for f in close), default=None),
+                     'last_at': max(f['at'] for f in close).strftime('%Y-%m-%dT%H:%M:%SZ') if close else None,
+                     'radius_km': radius_km}
+    return out
 
 
 def to_feature(f: dict) -> dict:
@@ -94,4 +125,4 @@ def fetch(meter: Meter | None = None) -> dict:
         raise RuntimeError('; '.join(errors))
     selected = select(fires)
     return {'fires': {'type': 'FeatureCollection', 'features': [to_feature(f) for f in selected]},
-            'in_bbox': len(fires), 'warnings': errors}
+            'in_bbox': len(fires), 'near_rivers': near_rivers(fires, river_points()), 'warnings': errors}

@@ -6,11 +6,14 @@ task queue). Two guards stop a stampede: a process lock with the set of sources 
 and the `refreshing_since` column, claimed with one conditional UPDATE so only one instance of the
 service refreshes a source at a time (a claim older than five minutes is taken over). A failed fetch
 keeps the last good payload, records the error and leaves the claim in place, which backs the
-source off for those five minutes. `manage.py refresh_fuentes` runs the same refresh synchronously.
+source off for those five minutes. `manage.py refresh_fuentes` and `POST /api/v1/fuentes/refresh`
+(called every 30 minutes by the refresh-feeds GitHub workflow) run the same refresh synchronously, so
+visitors normally find every source fresh and the background thread is only the fallback.
 """
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import timedelta
 
 from django.conf import settings
@@ -18,6 +21,9 @@ from django.db import close_old_connections
 from django.db.models import Q
 from django.utils import timezone
 
+from ongs.models import River
+
+from . import summary
 from .http import Meter
 from .models import FeedCache
 from .sources import REGISTRY, TILE_LAYERS
@@ -25,6 +31,8 @@ from .sources import REGISTRY, TILE_LAYERS
 logger = logging.getLogger(__name__)
 
 CLAIM_TIMEOUT = timedelta(minutes=5)
+NEXT_PASSES = 3
+REFRESH_WAIT_S = 45
 
 _lock = threading.Lock()
 _running: set[str] = set()
@@ -101,6 +109,64 @@ def schedule_refresh(source_id: str) -> bool:
     return True
 
 
+def _refresh_in_thread(source_id: str, force: bool) -> FeedCache | None:
+    try:
+        return refresh(source_id, force=force)
+    finally:
+        close_old_connections()
+
+
+def _status(row: FeedCache | None) -> dict:
+    if row is None:
+        return {'status': 'busy'}
+    return {'status': 'ok' if row.ok else 'failed', 'fetched_at': _iso(row.fetched_at),
+            'duration_ms': row.duration_ms, 'error': row.error or None}
+
+
+def refresh_due(force: bool = False, wait_s: float = REFRESH_WAIT_S) -> dict:
+    """Refresh every stale source (every source with force) now, all at once on their own threads.
+
+    Returns {source: {status, ...}} where status is ok, failed, fresh (skipped), busy (another worker
+    holds the claim) or running (still going after wait_s; it finishes in the background, which keeps
+    the request under the 60 s Cloud Run and gunicorn timeouts).
+    """
+    rows = {row.source: row for row in FeedCache.objects.filter(source__in=REGISTRY)}
+    out, due = {}, []
+    for source_id in REGISTRY:
+        if force or is_stale(rows.get(source_id)):
+            due.append(source_id)
+        else:
+            out[source_id] = {'status': 'fresh', 'fetched_at': _iso(rows[source_id].fetched_at)}
+    if getattr(settings, 'FUENTES_INLINE', False):  # tests: one thread, one database connection
+        for source_id in due:
+            out[source_id] = _status(refresh(source_id, force=force))
+        return {source_id: out[source_id] for source_id in REGISTRY}
+    if due:
+        pool = ThreadPoolExecutor(max_workers=len(due), thread_name_prefix='fuentes-refresh')
+        futures = {source_id: pool.submit(_refresh_in_thread, source_id, force) for source_id in due}
+        wait(futures.values(), timeout=wait_s)
+        pool.shutdown(wait=False)
+        for source_id, future in futures.items():
+            if not future.done():
+                out[source_id] = {'status': 'running'}
+            elif future.exception() is not None:
+                out[source_id] = {'status': 'failed', 'error': future.exception().__class__.__name__}
+            else:
+                out[source_id] = _status(future.result())
+    return {source_id: out[source_id] for source_id in REGISTRY}
+
+
+def upcoming_passes(satellite: dict, now) -> dict:
+    """The satellite dict with `next_passes` cut to the next NEXT_PASSES still in the future."""
+    cutoff = _iso(now)
+    out = {}
+    for slug, entry in satellite.items():
+        if 'next_passes' in entry:
+            entry = {**entry, 'next_passes': [p for p in entry['next_passes'] if p['at'] > cutoff][:NEXT_PASSES]}
+        out[slug] = entry
+    return out
+
+
 def get_payload(revalidate: bool = True) -> dict:
     rows = {row.source: row for row in FeedCache.objects.filter(source__in=REGISTRY)}
     now = timezone.now()
@@ -122,13 +188,22 @@ def get_payload(revalidate: bool = True) -> dict:
         row = rows.get(source_id)
         return row.payload if row and row.fetched_at else {}
 
+    satellite = upcoming_passes(data('sentinel').get('rivers') or {}, now)
+    weather = data('open-meteo').get('rivers') or {}
+    rivers = data('glofas').get('rivers') or {}
+    near = data('firms').get('near_rivers') or {}
+    slugs = set(satellite) | set(weather) | set(rivers) | set(near)
+    names = dict(River.objects.filter(slug__in=slugs).values_list('slug', 'name')) if slugs else {}
     return {
         'generated_at': _iso(now),
         'sources': sources,
         'fires': data('firms').get('fires') or {'type': 'FeatureCollection', 'features': []},
-        'satellite': data('sentinel').get('rivers') or {},
-        'weather': data('open-meteo').get('rivers') or {},
+        'satellite': satellite,
+        'weather': weather,
         'tile_layers': TILE_LAYERS,
+        'rivers': rivers,
+        'fires_near_rivers': near,
+        'summary': summary.build(slugs, names, weather, rivers, satellite, near),
     }
 
 

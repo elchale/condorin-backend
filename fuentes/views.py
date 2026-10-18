@@ -4,6 +4,9 @@ The encoded body (plain and gzip, compressed once) lives in the process cache fo
 FUENTES_CACHE_SECONDS, so a burst of visitors costs one read of the cache table and one compression.
 Browsers and CDNs keep it five minutes and may serve it stale for an hour; the ETag (which ignores
 `generated_at`) turns a revalidation into a 304.
+
+POST /api/v1/fuentes/refresh (Bearer PANEL_API_SECRET) refreshes the stale sources synchronously; the
+refresh-feeds GitHub workflow calls it every 30 minutes.
 """
 import gzip
 import hashlib
@@ -14,11 +17,13 @@ from django.conf import settings
 from django.core.cache import cache
 from django.http import HttpResponse
 from django.utils.cache import get_conditional_response, patch_vary_headers
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from mapa.middleware import cors
+from panel.auth import authenticate_frontend
 
-from .services import get_payload
+from .services import get_payload, refresh_due
 
 CACHE_KEY = 'fuentes:public:v1'
 PUBLIC_CACHE = 'public, max-age=300, stale-while-revalidate=3600'
@@ -66,3 +71,17 @@ class FuentesView(APIView):
 
     def finalize_response(self, request, response, *args, **kwargs):
         return cors(super().finalize_response(request, response, *args, **kwargs))
+
+
+class FuentesRefreshView(APIView):
+    """Refresh the stale feeds now (all with ?force=1) and report each source; 502 when all tried failed."""
+    throttle_scope = 'panel'
+
+    def post(self, request):
+        authenticate_frontend(request)
+        force = request.query_params.get('force') in ('1', 'true')
+        result = refresh_due(force=force)
+        cache.delete(CACHE_KEY)
+        tried = [r for r in result.values() if r['status'] in ('ok', 'failed')]
+        failed = tried and all(r['status'] == 'failed' for r in tried)
+        return Response({'force': force, 'sources': result}, status=502 if failed else 200)

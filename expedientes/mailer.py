@@ -1,10 +1,39 @@
-"""Email the final PDF to the ONG, and to any authority that takes denuncias by email."""
+"""Email the final PDF to the ONG, to any authority that takes denuncias by email, and the admins when a link is opened."""
 import logging
 
 from django.conf import settings
 from django.core.mail import EmailMessage
 
+from accounts.models import Admin
+from detections.text import fecha_larga
+
 logger = logging.getLogger(__name__)
+
+
+def notify_admins_opened(alert) -> list[str]:
+    """Tells every active admin that someone tapped "Crear expediente" for the first time.
+
+    Returns the addresses it went to. Never raises: a mail problem must not break the member's page.
+    """
+    recipients = list(Admin.objects.filter(active=True).values_list('email', flat=True))
+    if not recipients:
+        return []
+    member, ong, image = alert.member, alert.member.ong, alert.image
+    who = f'{member.full_name} de {ong.display_name}' if member.full_name else ong.display_name
+    link = f'{settings.FRONTEND_URL}/admin/en-vivo'
+    body = (
+        f'{who} abrió el expediente del río {image.river.name} '
+        f'(imagen del {fecha_larga(image.captured_at)}) el {fecha_larga(alert.opened_at)}.\n\n'
+        f'WhatsApp: +{member.phone}\n\n'
+        f'Ver en el panel: {link}'
+    )
+    message = EmailMessage(subject=f'{who} abrió un expediente en Ojo de Cóndor', body=body, to=recipients)
+    try:
+        message.send()
+    except Exception as exc:
+        logger.error('alert %s: email to the admins failed: %s', alert.pk, exc)
+        return []
+    return recipients
 
 
 def _filename(expediente) -> str:
@@ -32,8 +61,8 @@ def send_to_ong(expediente, member) -> list[str]:
         f'Código de integridad (SHA-256) del PDF: {expediente.pdf_sha256}\n\n'
         'Dónde presentarlo:\n'
         f'{_steps(expediente)}\n\n'
-        'Cuando lo presentes, registra el número que te den en Condorin para hacer seguimiento.\n\n'
-        'Condorin'
+        'Cuando lo presentes, registra el número que te den en Ojo de Cóndor para hacer seguimiento.\n\n'
+        'Ojo de Cóndor'
     )
     message = EmailMessage(
         subject=f'Expediente {expediente.folio}: denuncia lista para presentar',

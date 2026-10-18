@@ -5,6 +5,7 @@ import pytest
 from django.core import mail
 from django.utils import timezone
 
+from accounts.models import Admin
 from detections.models import Alert
 from expedientes import codes
 from expedientes.models import Expediente
@@ -85,6 +86,29 @@ def test_first_tap_creates_a_prefilled_expediente(client, maria):
     assert exp['field_evidence_links'].startswith('https://www.google.com/maps/')
     assert exp['field_observations'] and exp['suspects'] == 'Por identificar.'
     assert 'mercurio' in exp['risk_notes'] and 'Parque Nacional Yaguas' in exp['risk_notes']
+
+
+def test_first_tap_emails_the_admins_once(client, maria, django_capture_on_commit_callbacks):
+    Admin.objects.create(email='carlos@example.org')
+    Admin.objects.create(email='former@example.org', active=False)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        client.get(url(maria))
+        client.get(url(maria))
+        patch(client, maria, {'rep_position': 'Presidenta'})
+
+    assert len(mail.outbox) == 1
+    opened = mail.outbox[0]
+    assert opened.to == ['carlos@example.org']
+    assert opened.subject == 'María Huamán Ríos de Amazonía Viva abrió un expediente en Ojo de Cóndor'
+    assert 'río Yaguas' in opened.body and '+51936282808' in opened.body and '/admin/en-vivo' in opened.body
+
+
+def test_event_page_and_no_admins_send_nothing(client, maria, django_capture_on_commit_callbacks):
+    with django_capture_on_commit_callbacks(execute=True):
+        client.get(f'/api/v1/eventos/{maria.token}')
+        client.get(url(maria))
+    assert mail.outbox == []
 
 
 def test_member_without_dni_gets_the_legal_representative_as_signer(client, alerts):

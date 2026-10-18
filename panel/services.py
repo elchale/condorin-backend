@@ -55,7 +55,7 @@ def member_for_phone(phone: str) -> tuple[Member, bool]:
 
 
 def send_latest_alert(member: Member) -> Alert | None:
-    """A new member gets the ONG's most recent alert by WhatsApp at once, so they see how Condorin works."""
+    """A new member gets the ONG's most recent alert by WhatsApp at once, so they see how Ojo de Cóndor works."""
     image = (SatelliteImage.objects
              .filter(river__in=member.ong.rivers.all(), detections__confidence__gte=settings.ALERT_MIN_CONFIDENCE)
              .order_by('-captured_at').first())

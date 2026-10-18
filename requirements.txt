@@ -1,5 +1,5 @@
 # Python 3.13
-# Condorin API. Alerts go out on a thread after the webhook commits; there is no task queue.
+# Ojo de Cóndor API. Alerts go out on a thread after the webhook commits; there is no task queue.
 
 # Web
 Django==5.2.18

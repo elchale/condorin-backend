@@ -3,7 +3,7 @@
 [project]
 name = "condorin-backend"
 version = "0.1.0"
-description = "Condorin API: detector webhook, WhatsApp alerts and expedientes de denuncia."
+description = "Ojo de Cóndor API: detector webhook, WhatsApp alerts and expedientes de denuncia."
 requires-python = ">=3.13"
 dependencies = []
 

@@ -1,4 +1,4 @@
-"""Core Django settings for the Condorin API (api.condorin.pe).
+"""Core Django settings for the Ojo de Cóndor API (api.condorin.pe).
 
 The API has no user accounts. Access works three ways:
 - the detector authenticates the webhook with a Google ID token or a shared secret;

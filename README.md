@@ -1,4 +1,4 @@
-# Condorin API
+# Ojo de Cóndor API
 
 Backend for [condorin.pe](https://condorin.pe), deployed at **api.condorin.pe**. It receives what the
 satellite detector finds on Amazon rivers, alerts the ONGs that watch each river by WhatsApp, and helps
@@ -17,7 +17,7 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
                                         │
                                         ▼
          WhatsApp template condorin_evento_v2 to every member of every ONG that watches the river
-         [crop image]  "Hola María, Condorin detectó 1 posible draga en el río Yaguas..."
+         [crop image]  "Hola María, Ojo de Cóndor detectó 1 posible draga en el río Yaguas..."
          [Crear expediente → condorin.pe/expediente/<token>]   [Ver ubicación → Google Maps]
                                         │
                                         ▼ member taps
@@ -36,7 +36,7 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
   version, together with GCS's own MD5 and CRC32C. Each crop gets a SHA-256. All of it goes in the PDF annexes, and
   the PDF's own SHA-256 goes in the email. Links shown to the user are V4 signed URLs for that exact version.
 - **The PDF** follows what NCPP art. 328 and DAR's 2025 guide ask for: denunciante, numbered hechos
-  (drafted by Condorin), ubicación in WGS84 and UTM, presuntos responsables, fundamentos (CP 307-A/B,
+  (drafted by Ojo de Cóndor), ubicación in WGS84 and UTM, presuntos responsables, fundamentos (CP 307-A/B,
   DL 1100, Ley 26834 inside a protected area), medios probatorios, petitorio (constatación fiscal,
   interdicción) and a signature block. Annexes include the crops, scene custody data, earlier detections within
   3 km and the Copernicus credit. Drafts carry a BORRADOR watermark.

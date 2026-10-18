@@ -3,7 +3,7 @@ def test_landing_shows_the_condorin_logo(client):
     assert resp.status_code == 200
     html = resp.content.decode()
     assert 'brand/logo.png' in html
-    assert 'Condorin' in html
+    assert 'Ojo de Cóndor' in html
 
 
 def test_healthz(client):

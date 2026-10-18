@@ -53,7 +53,7 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='apikey')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 EMAIL_TIMEOUT = env.int('EMAIL_TIMEOUT', default=15)
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Condorin <info@qolca.org>')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='Ojo de Cóndor <info@qolca.org>')
 
 # The condorin.pe server calls the /api/v1/panel routes with this secret and the signed in member's
 # phone (X-Condorin-Phone). Browsers never see it. Empty turns the panel routes off.

@@ -1,7 +1,7 @@
 # Expediente page (condorin.pe/expediente/[token])
 
 What the Next.js page must do with this API. The goal: someone on a phone, on a slow connection, goes
-from the WhatsApp alert to a denuncia ready to file in a few minutes, and never types anything Condorin
+from the WhatsApp alert to a denuncia ready to file in a few minutes, and never types anything Ojo de Cóndor
 already knows.
 
 ## Principles
@@ -23,7 +23,7 @@ already knows.
 2. **Quién denuncia.** `ong_name`, `ong_ruc`, `ong_address`, `notify_email`, `rep_name`, `rep_dni`,
    `rep_position`. Most are prefilled, so show them as a summary card with "Editar". Open the card by default
    only when something in it is in `missing`.
-3. **Qué pasó.** `facts` is already written by Condorin. Show it in an editable text area that says
+3. **Qué pasó.** `facts` is already written by Ojo de Cóndor. Show it in an editable text area that says
    "Revisa y corrige si hace falta". Optional fields: `place_reference` ("¿Cómo se llama el lugar?"),
    `field_observations` ("¿Alguien de la comunidad lo vio?"), `field_evidence_links` (links to photos or
    videos), `suspects` (defaults to "Por identificar."), and `risk_notes`.

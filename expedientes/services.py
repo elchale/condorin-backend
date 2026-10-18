@@ -1,9 +1,10 @@
 """Open, fill in and finalize an expediente from a personal WhatsApp link."""
 import hashlib
 import logging
+import threading
 
 from django.conf import settings
-from django.db import transaction
+from django.db import close_old_connections, transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
@@ -11,6 +12,7 @@ from core import gcs
 from core.exceptions import BaseError
 from detections.models import Alert
 
+from . import mailer
 from .drafting import FIELD_OBSERVATIONS, draft_evidence_links, draft_facts, draft_place_reference, draft_risks
 from .models import Authority, Expediente, Filing
 
@@ -73,12 +75,32 @@ def signer(member):
     return rep or member
 
 
+def notify_opened(alert_id: int) -> None:
+    """Emails the admins after the first tap, on a thread, or inline when ALERTS_INLINE."""
+    def run():
+        mailer.notify_admins_opened(Alert.objects.select_related('member__ong', 'image__river').get(pk=alert_id))
+
+    def run_in_thread():
+        try:
+            run()
+        except Exception:
+            logger.exception('alert %s: admin notification crashed', alert_id)
+        finally:
+            close_old_connections()
+
+    if getattr(settings, 'ALERTS_INLINE', False):
+        run()
+        return
+    threading.Thread(target=run_in_thread, daemon=True, name=f'opened-{alert_id}').start()
+
+
 @transaction.atomic
 def open_expediente(alert: Alert) -> Expediente:
     """The ONG's expediente for this image; created and prefilled on the first tap."""
     if alert.opened_at is None:
         alert.opened_at = timezone.now()
         alert.save(update_fields=['opened_at', 'updated'])
+        transaction.on_commit(lambda: notify_opened(alert.pk))
 
     member, ong, image = alert.member, alert.member.ong, alert.image
     rep = signer(member)

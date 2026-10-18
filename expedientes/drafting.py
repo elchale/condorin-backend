@@ -1,4 +1,4 @@
-"""The text Condorin writes for the ONG, so they only correct it instead of starting from a blank page."""
+"""The text Ojo de Cóndor writes for the ONG, so they only correct it instead of starting from a blank page."""
 from datetime import timedelta
 
 from django.conf import settings
@@ -54,7 +54,7 @@ def draft_facts(image: SatelliteImage) -> str:
     paragraphs = [
         f'1. El {fecha_larga(image.captured_at)} (hora de Perú), el satélite {image.satellite} '
         f'captó una imagen del {place_sentence(river)}.',
-        f'2. El análisis de esa imagen con el sistema de detección Condorin ({image.model_name} {image.model_version}) '
+        f'2. El análisis de esa imagen con el sistema de detección Ojo de Cóndor ({image.model_name} {image.model_version}) '
         f'identificó {dragas(len(detections))} de minería aurífera sobre el cauce del río'
         + (f', la principal en las coordenadas {coord(first.lat)}, {coord(first.lon)} (WGS84)' if first else '')
         + '. El detalle de cada punto y las imágenes se adjuntan como anexos.',
@@ -63,7 +63,7 @@ def draft_facts(image: SatelliteImage) -> str:
     if history:
         dates = ', '.join(fecha_corta(h.captured_at) for h in history[:5])
         paragraphs.append(
-            f'3. En la misma zona, a menos de {HISTORY_RADIUS_KM:g} km, Condorin registró detecciones en '
+            f'3. En la misma zona, a menos de {HISTORY_RADIUS_KM:g} km, Ojo de Cóndor registró detecciones en '
             + ('1 imagen anterior' if len(history) == 1 else f'{len(history)} imágenes anteriores')
             + f' ({dates}), lo que indica una actividad sostenida.'
         )

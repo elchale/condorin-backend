@@ -6,8 +6,8 @@ from detections.views import DetectionWebhookView
 from expedientes.views import EventoView, ExpedienteSendView, ExpedienteView
 from panel.views import ActivityView, LinkSignInView, PanelExpedienteView, PanelView
 
-admin.site.site_header = 'Condorin'
-admin.site.site_title = 'Condorin'
+admin.site.site_header = 'Ojo de Cóndor'
+admin.site.site_title = 'Ojo de Cóndor'
 
 urlpatterns = [
     path('', landing, name='landing'),

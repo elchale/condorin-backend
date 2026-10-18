@@ -1,4 +1,4 @@
-"""The admin live feed: every scene the detector posted and each decision Condorin took about it.
+"""The admin live feed: every scene the detector posted and each decision Ojo de Cóndor took about it.
 
 The shape is fixed by condorin/src/lib/admin/activity.ts. Steps are computed here, in order, so the
 frontend only shows and animates them.

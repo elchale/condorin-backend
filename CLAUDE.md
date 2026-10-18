@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Condorin API (api.condorin.pe). Read README.md first. It has the flow, the routes and the setup.
+Ojo de Cóndor API (api.condorin.pe). Read README.md first. It has the flow, the routes and the setup.
 
 ## Layout
 - `backend/settings/`: `common.py` (Django, DB, DRF, security), `integrations.py` (webhook auth, WhatsApp, GCS, email).

@@ -236,11 +236,11 @@ def _decorate(label: str, final: bool, today):
         width, height = A4
         canvas.setFont('Helvetica-Bold', 9)
         canvas.setFillColor(MARCA)
-        canvas.drawString(2 * cm, height - 1.2 * cm, 'Condorin')
+        canvas.drawString(2 * cm, height - 1.2 * cm, 'Ojo de Cóndor')
         canvas.setFillColor(GRIS)
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(width - 2 * cm, height - 1.2 * cm, label)
-        canvas.drawString(2 * cm, 1.1 * cm, f'Generado por Condorin el {today:%d/%m/%Y}')
+        canvas.drawString(2 * cm, 1.1 * cm, f'Generado por Ojo de Cóndor el {today:%d/%m/%Y}')
         canvas.drawRightString(width - 2 * cm, 1.1 * cm, f'Página {doc.page}')
         if not final:
             canvas.setFont('Helvetica-Bold', 70)

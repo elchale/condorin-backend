@@ -139,4 +139,5 @@ def test_export_command_prints_the_same_payload(client, scene):
     printed = json.loads(out.getvalue())
     served = client.get('/api/v1/mapa').json()
     printed.pop('generated_at'), served.pop('generated_at')
+    printed['clock'].pop('now'), served['clock'].pop('now')  # ticks between the two calls
     assert printed == served

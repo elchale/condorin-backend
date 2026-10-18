@@ -134,7 +134,9 @@ CORS_ALLOWED_ORIGIN_REGEXES = env.list('CORS_ALLOWED_ORIGIN_REGEXES', default=[]
 if DEBUG:
     # Local frontends: the Vite map (5173) and Next (3000). GET /api/v1/mapa allows any origin by itself.
     CORS_ALLOWED_ORIGINS += ['http://localhost:5173', 'http://localhost:3000']
-CORS_EXPOSE_HEADERS = ['x-request-id']
+# The browser reads the PDF's file name (Content-Disposition) and the request id.
+CORS_EXPOSE_HEADERS = ['x-request-id', 'content-disposition']
+# django-cors-headers' default headers already include authorization and content-type.
 
 REST_FRAMEWORK = {
     # No sessions or JWT: callers prove who they are with the link token or the webhook bearer.

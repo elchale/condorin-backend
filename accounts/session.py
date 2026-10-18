@@ -23,6 +23,13 @@ PENDING_SALT = 'otp-pending'
 SESSION_SALT = 'session'
 CODE_SECONDS = 10 * 60
 SESSION_SECONDS = 30 * 24 * 60 * 60
+# A WhatsApp alert link is easier to pass on than a code, so its session is shorter (like condorin.pe).
+LINK_SESSION_SECONDS = 7 * 24 * 60 * 60
+
+# How the session was opened. A `link` session never finalizes an expediente: that always asks for a
+# fresh WhatsApp code (expedientes.codes), whatever the session.
+VIA_CODE = 'code'
+VIA_LINK = 'link'
 
 PHONE_RE = re.compile(r'^\d{10,15}$')
 
@@ -56,29 +63,47 @@ def read_pending(value: str) -> dict:
     return data
 
 
-def session_token(phone: str) -> str:
-    return signing.TimestampSigner(salt=SESSION_SALT).sign(phone)
+def session_token(phone: str, via: str = VIA_CODE) -> str:
+    return signing.TimestampSigner(salt=SESSION_SALT).sign_object({'p': phone, 'via': via})
 
 
-def read_session(token: str) -> str | None:
-    """The phone a session token belongs to, or None when it is missing, forged or older than 30 days."""
+def read_session(token: str) -> tuple[str, str] | None:
+    """(phone, via) for a valid session token; None when missing, forged or past its lifetime
+    (30 days for a code session, 7 for a link session)."""
+    signer = signing.TimestampSigner(salt=SESSION_SALT)
     try:
-        phone = signing.TimestampSigner(salt=SESSION_SALT).unsign(token, max_age=SESSION_SECONDS)
-    except signing.BadSignature:  # SignatureExpired is a subclass
+        data = signer.unsign_object(token, max_age=SESSION_SECONDS)
+    except (signing.BadSignature, ValueError):  # SignatureExpired is a BadSignature; ValueError: bad payload
         return None
-    return phone if PHONE_RE.match(phone) else None
+    if not isinstance(data, dict) or not PHONE_RE.match(str(data.get('p', ''))):
+        return None
+    via = data.get('via')
+    if via == VIA_LINK:
+        try:
+            signer.unsign_object(token, max_age=LINK_SESSION_SECONDS)
+        except signing.SignatureExpired:
+            return None
+    elif via != VIA_CODE:
+        return None
+    return data['p'], via
 
 
-def bearer_phone(request) -> str | None:
-    """The phone behind `Authorization: Bearer <session>`, or None when absent or invalid."""
+def bearer_session(request) -> tuple[str, str] | None:
+    """(phone, via) behind `Authorization: Bearer <session>`, or None when absent or invalid."""
     scheme, _, token = request.headers.get('Authorization', '').partition(' ')
     if scheme.lower() != 'bearer' or not token.strip():
         return None
     return read_session(token.strip())
 
 
-def require_session(request) -> str:
-    phone = bearer_phone(request)
-    if phone is None:
+def bearer_phone(request) -> str | None:
+    session = bearer_session(request)
+    return session[0] if session else None
+
+
+def require_session(request, allow_link: bool = True) -> str:
+    """The signed in phone. With allow_link=False only a session opened with a WhatsApp code counts."""
+    session = bearer_session(request)
+    if session is None or (session[1] == VIA_LINK and not allow_link):
         raise SessionInvalid()
-    return phone
+    return session[0]

@@ -1,11 +1,14 @@
 """Sign in for the map SPA (contract B): a WhatsApp code, then a Bearer session token.
 
 POST  /api/v1/auth/codigo                         {"phone", "consent": true} → 202 {"phone", "pending"}
-POST  /api/v1/auth/entrar                         {"pending", "code"} → {"token", "member", "ong"}
+POST  /api/v1/auth/entrar                         {"pending", "code"} → {"token", "member", "ong", "via": "code"}
+POST  /api/v1/auth/enlace                         {"token": <alert token>} → the same with "via": "link" (7 days)
 GET   /api/v1/me                                  Bearer → the same payload as GET /api/v1/panel
 POST  /api/v1/me/incidentes/<id>/expediente       Bearer → {"token"} (the member's expediente link)
 
-condorin.pe keeps its own cookie session; this is for browsers that call the API directly.
+Browsers call these directly (the static SPA at condorin.pe and the map). A `link` session reads the panel
+and opens expedientes like any other, but finalizing a denuncia still needs the WhatsApp code sent to
+that member's phone (POST /api/v1/expedientes/<token>/enviar), so a forwarded link never signs anything.
 """
 import hashlib
 import hmac
@@ -24,12 +27,14 @@ from rest_framework.views import APIView
 from core import whatsapp
 from core.exceptions import BaseError
 from expedientes.codes import MAX_ATTEMPTS, RESEND_SECONDS, CodeExpired, CodeInvalid, CodeTooSoon
-from panel.services import member_for_phone, open_from_panel
+from panel.services import member_for_phone, open_from_panel, sign_in_by_link
 from panel.views import panel_payload
 
 from .models import Member as SiteUser
 from .session import (
     CODE_SECONDS,
+    VIA_CODE,
+    VIA_LINK,
     code_digest,
     normalize_phone,
     pending_value,
@@ -121,11 +126,26 @@ class EnterView(APIView):
 
         record_sign_in(phone)
         member, _ = member_for_phone(phone)
-        return Response({
-            'token': session_token(phone),
-            'member': {'name': member.full_name, 'phone': member.phone},
-            'ong': {'name': member.ong.display_name},
-        })
+        return Response(_signed_in(member, VIA_CODE))
+
+
+class LinkEnterView(APIView):
+    """Signs in from the "Crear expediente" button of a WhatsApp alert, under the rules of sign_in_by_link:
+    only alerts WhatsApp delivered, within LINK_SIGN_IN_DAYS; anything else gets the same 404."""
+    throttle_scope = 'panel_link'
+
+    def post(self, request):
+        member = sign_in_by_link(str(request.data.get('token', '')).strip())
+        return Response(_signed_in(member, VIA_LINK))
+
+
+def _signed_in(member, via: str) -> dict:
+    return {
+        'token': session_token(member.phone, via),
+        'via': via,
+        'member': {'name': member.full_name, 'phone': member.phone},
+        'ong': {'name': member.ong.display_name},
+    }
 
 
 class MeView(APIView):

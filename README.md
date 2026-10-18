@@ -48,8 +48,8 @@ detector ──POST /api/v1/detections──▶ store scene + detections (idempo
 
 ## API
 
-Fifteen routes: the webhook, the expediente (three plus the event page), four for the condorin.pe server, the public map,
-four for the map SPA's sign in, and the pages.
+Sixteen routes: the webhook, the expediente (three plus the event page), four for the condorin.pe server, the public map,
+five for the browser sign in (map and static SPA), and the pages.
 
 | Method | Path | Who | What |
 |---|---|---|---|
@@ -64,6 +64,7 @@ four for the map SPA's sign in, and the pages.
 | GET | `/api/v1/mapa` | anyone | The public map (contract A in `hacktheandes/mapa-data/CONTRACT.md`): totals (with `alerts_opened` and `users` as usage counters), rivers, scenes, detections as GeoJSON, a monthly timeline and an anonymized activity feed. No names, phones, tokens or signed URLs. With a valid `Authorization: Bearer <session>` it adds `mine` and turns private. `manage.py export_mapa` prints the same JSON. |
 | POST | `/api/v1/auth/codigo` | map SPA | `{"phone", "consent": true}` → 202 `{"phone", "pending"}`. Sends `condorin_codigo` by WhatsApp. One code per phone every 45 s, 10 per IP per hour. |
 | POST | `/api/v1/auth/entrar` | map SPA | `{"pending", "code"}` → `{"token", "member", "ong"}`. 5 attempts per code. Records the sign in on `accounts_member` and joins the default ONG, like condorin.pe. |
+| POST | `/api/v1/auth/enlace` | SPA | `{"token": <alert token>}` → the same as `/auth/entrar` with `"via": "link"` and a 7 day session. Same rules and same 404 as `/api/v1/panel/enlace`. |
 | GET | `/api/v1/me` | map SPA | `Authorization: Bearer <token>`. Exactly the `/api/v1/panel` payload. |
 | POST | `/api/v1/me/incidentes/<id>/expediente` | map SPA | Same bearer. `{"token"}` like the panel route. |
 | GET | `/` and `/healthz/` | anyone | Landing page with the logo; liveness probe. |
@@ -89,7 +90,10 @@ and condorin.pe/panel uses the panel routes. The screens are in [`docs/EXPEDIENT
   The pending value carries an HMAC of the code keyed with `DJANGO_SECRET_KEY`, never the code; it lasts 10 minutes and the
   session 30 days. Attempts and the 45 s resend lock live in Django's cache (LocMem): exact on one instance, per instance
   behind several until `CACHES` points at a shared backend. Error types: `code_invalid`, `code_expired`, `code_too_soon` (429),
-  `session_invalid` (401).
+  `session_invalid` (401). Sessions carry `via` (`code` or `link`); a link session never finalizes a denuncia, because
+  `/enviar` ignores the bearer and always asks for the WhatsApp code sent to that member.
+- **Browser calls.** The expediente, event, PDF, `/auth/*` and `/me*` routes answer condorin.pe and www.condorin.pe
+  (preflight with `Authorization` and JSON bodies); `Content-Disposition` is exposed so the SPA can name the PDF.
 
 ### Signing in from the WhatsApp link
 

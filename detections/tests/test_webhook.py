@@ -30,7 +30,7 @@ def test_alerts_every_member_of_the_ong(post_detection, payload, ong, sent):
 
     assert {phone for phone, _, _ in sent} == {'51936282808', '51999888777'}
     phone, template, components = next(c for c in sent if c[0] == '51936282808')
-    assert template == 'condorin_evento'
+    assert template == 'condorin_evento_v2'
     body = [p['text'] for p in components[1]['parameters']]
     assert body == ['María', '1 posible draga', 'Yaguas', '15 de octubre de 2026 a las 05:42', '-2.7706, -70.9512']
     alert = Alert.objects.get(member__phone=phone)
@@ -99,6 +99,6 @@ def test_event_template_second_button_opens_the_event_page(post_detection, paylo
     _, template, components = sent[0]
     token = components[2]['parameters'][0]['text']
     assert template == 'condorin_evento' and components[3]['parameters'][0]['text'] == token
-    buttons = alert_template_definition('h')['components'][3]['buttons']
+    buttons = next(c for c in alert_template_definition('h')['components'] if c['type'] == 'BUTTONS')['buttons']
     assert [b['text'] for b in buttons] == ['Crear expediente', 'Ver evento']
     assert buttons[1]['url'].endswith('/evento/{{1}}')

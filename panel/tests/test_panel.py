@@ -155,7 +155,7 @@ def test_new_member_gets_the_latest_alert_by_whatsapp(client, scene, sent, djang
     with django_capture_on_commit_callbacks(execute=True):
         call(client, 'get', '/api/v1/panel', phone='51911222333')
     phone, template, _ = sent[-1]
-    assert phone == '51911222333' and template == 'condorin_evento'
+    assert phone == '51911222333' and template == 'condorin_evento_v2'
     alert = Alert.objects.get(member__phone='51911222333')
     assert alert.image == scene and alert.status == Alert.Status.SENT
 

@@ -24,7 +24,8 @@ def dragas(count: int) -> str:
     return '1 posible draga' if count == 1 else f'{count} posibles dragas'
 
 
-# UTILITY templates condorin_alerta_v2 and condorin_evento share this body (approved 2026-10-17).
+# UTILITY templates condorin_alerta_v2, condorin_evento and condorin_evento_v2 share this body (approved 2026-10-17).
+# condorin_evento_v2 (in use) has no footer; condorin_evento_demo adds a demo line and is kept for special cases.
 # {{1}} first name, {{2}} what was seen, {{3}} river, {{4}} date, {{5}} coordinates.
 # Body variables never open or close the text, as Meta requires.
 ALERT_BODY = (
@@ -32,7 +33,6 @@ ALERT_BODY = (
     'en la imagen satelital del {{4}}. Ubicación aproximada: {{5}}.\n\n'
     'Revisa la evidencia y prepara el expediente desde el botón de abajo.'
 )
-ALERT_FOOTER = 'Condorin, monitoreo satelital de la Amazonía'
 ALERT_BUTTON_EXPEDIENTE = 'Crear expediente'
 ALERT_BUTTON_MAP = 'Ver ubicación'
 ALERT_BUTTON_EVENT = 'Ver evento'
@@ -58,7 +58,6 @@ def alert_template_definition(header_handle: str) -> dict:
             {'type': 'BODY', 'text': ALERT_BODY, 'example': {'body_text': [[
                 'María', '1 posible draga', 'Yaguas', '15 de octubre de 2026 a las 05:42', '-2.7706, -70.9512',
             ]]}},
-            {'type': 'FOOTER', 'text': ALERT_FOOTER},
             {'type': 'BUTTONS', 'buttons': [
                 {'type': 'URL', 'text': ALERT_BUTTON_EXPEDIENTE,
                  'url': f'{settings.FRONTEND_URL}/expediente/{{{{1}}}}',

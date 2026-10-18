@@ -85,6 +85,56 @@ def _authority(a: Authority, selected: set, filings: dict) -> dict:
     }
 
 
+def incident_payload(image) -> dict:
+    """What the satellite saw: shared by the expediente page and the event page."""
+    river = image.river
+    return {
+        'river': {
+            'slug': river.slug, 'name': river.name, 'basin': river.basin, 'district': river.district,
+            'province': river.province, 'region': river.region, 'protected_area': river.protected_area,
+        },
+        'place': place_sentence(river),
+        'satellite': image.satellite,
+        'captured_at': image.captured_at,
+        'captured_at_label': fecha_larga(image.captured_at),
+        'model': f'{image.model_name} {image.model_version}',
+        'detections': [_detection(d) for d in image.alerting_detections()],
+        'discarded': image.detections.filter(confidence__lt=settings.ALERT_MIN_CONFIDENCE).count(),
+        'threshold': settings.ALERT_MIN_CONFIDENCE,
+        'scene': {
+            'uri': image.gs_uri,
+            'md5_hash': image.md5_hash,
+            'crc32c': image.crc32c,
+            'size_bytes': image.size_bytes,
+            'download_url': gcs.signed_url(image.bucket, image.object_name, image.generation,
+                                           download_as=image.object_name.rsplit('/', 1)[-1]),
+        },
+        'history': [
+            {'captured_at': h.captured_at, 'label': fecha_corta(h.captured_at), 'satellite': h.satellite,
+             'detections': h.alerting_detections().count()}
+            for h in earlier_sightings(image)
+        ],
+    }
+
+
+def event_payload(alert) -> dict:
+    """The event page: the incident and where the ONG's expediente stands, without opening it."""
+    member, image = alert.member, alert.image
+    expediente = Expediente.objects.filter(image=image, ong=member.ong).first()
+    return {
+        'member': {'name': member.full_name, 'first_name': member.first_name},
+        'ong': {'name': member.ong.display_name},
+        'incident': incident_payload(image),
+        'expediente': expediente and {
+            'status': expediente.status,
+            'status_label': expediente.get_status_display(),
+            'folio': expediente.folio,
+            'missing': len(missing_fields(expediente)) if expediente.status == Expediente.Status.DRAFT else 0,
+            'updated_by': expediente.updated_by.full_name if expediente.updated_by else None,
+        },
+    }
+
+
 def expediente_payload(expediente: Expediente, alert) -> dict:
     """Everything the expediente page needs in one response."""
     image, river, member = expediente.image, expediente.image.river, alert.member
@@ -114,30 +164,6 @@ def expediente_payload(expediente: Expediente, alert) -> dict:
             'pdf_sha256': expediente.pdf_sha256,
             'pdf_gcs_uri': expediente.pdf_gcs_uri,
         },
-        'incident': {
-            'river': {
-                'slug': river.slug, 'name': river.name, 'basin': river.basin, 'district': river.district,
-                'province': river.province, 'region': river.region, 'protected_area': river.protected_area,
-            },
-            'place': place_sentence(river),
-            'satellite': image.satellite,
-            'captured_at': image.captured_at,
-            'captured_at_label': fecha_larga(image.captured_at),
-            'model': f'{image.model_name} {image.model_version}',
-            'detections': [_detection(d) for d in image.alerting_detections()],
-            'scene': {
-                'uri': image.gs_uri,
-                'md5_hash': image.md5_hash,
-                'crc32c': image.crc32c,
-                'size_bytes': image.size_bytes,
-                'download_url': gcs.signed_url(image.bucket, image.object_name, image.generation,
-                                               download_as=image.object_name.rsplit('/', 1)[-1]),
-            },
-            'history': [
-                {'captured_at': h.captured_at, 'label': fecha_corta(h.captured_at), 'satellite': h.satellite,
-                 'detections': h.alerting_detections().count()}
-                for h in earlier_sightings(image)
-            ],
-        },
+        'incident': incident_payload(image),
         'authorities': [_authority(a, selected, filings) for a in offered],
     }

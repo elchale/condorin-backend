@@ -35,7 +35,15 @@ ALERT_BODY = (
 ALERT_FOOTER = 'Condorin, monitoreo satelital de la Amazonía'
 ALERT_BUTTON_EXPEDIENTE = 'Crear expediente'
 ALERT_BUTTON_MAP = 'Ver ubicación'
+ALERT_BUTTON_EVENT = 'Ver evento'
 MAP_URL_BASE = 'https://www.google.com/maps/search/?api=1&query='
+# condorin_alerta_v2 was approved with a Google Maps button. Later templates (condorin_evento) open
+# condorin.pe/evento/<token> instead, the event page with the map, the evidence and both actions.
+MAP_BUTTON_TEMPLATES = {'condorin_alerta_v2'}
+
+
+def _opens_map() -> bool:
+    return settings.WA_ALERT_TEMPLATE in MAP_BUTTON_TEMPLATES
 
 
 def alert_template_definition(header_handle: str) -> dict:
@@ -57,7 +65,10 @@ def alert_template_definition(header_handle: str) -> dict:
                  'example': [f'{settings.FRONTEND_URL}/expediente/{sample_token}']},
                 {'type': 'URL', 'text': ALERT_BUTTON_MAP,
                  'url': f'{MAP_URL_BASE}{{{{1}}}}',
-                 'example': [f'{MAP_URL_BASE}-2.7706,-70.9512']},
+                 'example': [f'{MAP_URL_BASE}-2.7706,-70.9512']} if _opens_map() else
+                {'type': 'URL', 'text': ALERT_BUTTON_EVENT,
+                 'url': f'{settings.FRONTEND_URL}/evento/{{{{1}}}}',
+                 'example': [f'{settings.FRONTEND_URL}/evento/{sample_token}']},
             ]},
         ],
     }
@@ -75,5 +86,6 @@ def alert_template_components(*, member, image, count, header_url, token, lat, l
             text(f'{coord(lat)}, {coord(lon)}'),
         ]},
         {'type': 'button', 'sub_type': 'url', 'index': '0', 'parameters': [text(token)]},
-        {'type': 'button', 'sub_type': 'url', 'index': '1', 'parameters': [text(f'{coord(lat)},{coord(lon)}')]},
+        {'type': 'button', 'sub_type': 'url', 'index': '1',
+         'parameters': [text(f'{coord(lat)},{coord(lon)}' if _opens_map() else token)]},
     ]

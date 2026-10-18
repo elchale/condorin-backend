@@ -11,7 +11,7 @@ from core import gcs
 from core.exceptions import BaseError
 from detections.models import Alert
 
-from .drafting import draft_facts
+from .drafting import FIELD_OBSERVATIONS, draft_evidence_links, draft_facts, draft_place_reference, draft_risks
 from .models import Authority, Expediente, Filing
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,17 @@ def default_authorities(river):
     return chosen.distinct()
 
 
+def signer(member):
+    """Who signs by default: the member if their name and DNI are known, else the ONG's legal representative.
+
+    Everything is prefilled so the member only reviews; they can still change the signer in the form.
+    """
+    if member.full_name and member.dni:
+        return member
+    rep = member.ong.members.filter(active=True, is_legal_representative=True).exclude(dni='').first()
+    return rep or member
+
+
 @transaction.atomic
 def open_expediente(alert: Alert) -> Expediente:
     """The ONG's expediente for this image; created and prefilled on the first tap."""
@@ -70,19 +81,24 @@ def open_expediente(alert: Alert) -> Expediente:
         alert.save(update_fields=['opened_at', 'updated'])
 
     member, ong, image = alert.member, alert.member.ong, alert.image
+    rep = signer(member)
     expediente, created = Expediente.objects.select_for_update().get_or_create(
         image=image, ong=ong,
         defaults={
             'ong_name': ong.name,
             'ong_ruc': ong.ruc,
             'ong_address': ong.address,
-            'notify_email': ong.email or member.email,
-            'rep_name': member.full_name,
-            'rep_dni': member.dni,
-            'rep_position': member.position,
-            'rep_phone': member.phone,
+            'notify_email': ong.email or member.email or rep.email,
+            'rep_name': rep.full_name,
+            'rep_dni': rep.dni,
+            'rep_position': rep.position,
+            'rep_phone': rep.phone,
             'facts': draft_facts(image),
+            'place_reference': draft_place_reference(image),
+            'field_observations': FIELD_OBSERVATIONS,
+            'field_evidence_links': draft_evidence_links(image),
             'suspects': 'Por identificar.',
+            'risk_notes': draft_risks(image),
             'created_by': member,
             'updated_by': member,
         },

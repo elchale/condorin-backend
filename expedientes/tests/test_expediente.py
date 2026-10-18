@@ -80,6 +80,19 @@ def test_first_tap_creates_a_prefilled_expediente(client, maria):
     assert data['incident']['detections'][0]['utm'] == '19S 283090 E 9693584 N'
     assert {a['code'] for a in data['authorities'] if a['selected']} == {'fema', 'oefa', 'sernanp'}
     assert Alert.objects.get(pk=maria.pk).opened_at is not None
+    # Everything else arrives written, so the member only reviews.
+    assert exp['place_reference'].startswith('Río Yaguas') and '-2.7706, -70.9512' in exp['place_reference']
+    assert exp['field_evidence_links'].startswith('https://www.google.com/maps/')
+    assert exp['field_observations'] and exp['suspects'] == 'Por identificar.'
+    assert 'mercurio' in exp['risk_notes'] and 'Parque Nacional Yaguas' in exp['risk_notes']
+
+
+def test_member_without_dni_gets_the_legal_representative_as_signer(client, alerts):
+    Member.objects.filter(phone='51936282808').update(
+        is_legal_representative=True, dni='87654321', position='Presidenta')
+    exp = client.get(url(alerts['51999888777'])).json()['expediente']
+    assert (exp['rep_name'], exp['rep_dni'], exp['rep_position']) == ('María Huamán Ríos', '87654321', 'Presidenta')
+    assert 'rep_dni' not in exp['missing']
 
 
 def test_members_of_the_same_ong_share_one_expediente(client, alerts):
@@ -208,3 +221,18 @@ def test_ready_expediente_can_be_reopened_to_fix_it(client, maria, fixed_code):
     resp = patch(client, maria, {'reopen': True, 'rep_position': 'Directora'})
     assert resp.status_code == 200
     assert resp.json()['expediente']['status'] == 'draft'
+
+
+def test_event_page_does_not_open_the_expediente(client, maria):
+    data = client.get(f'/api/v1/eventos/{maria.token}').json()
+    assert data['incident']['river']['name'] == 'Yaguas' and data['incident']['detections'][0]['maps_url']
+    assert data['expediente'] is None and data['ong']['name'] == 'Amazonía Viva'
+    assert not Expediente.objects.exists()
+    assert Alert.objects.get(pk=maria.pk).opened_at is None
+
+    client.get(url(maria))
+    assert client.get(f'/api/v1/eventos/{maria.token}').json()['expediente']['status'] == 'draft'
+
+
+def test_event_page_unknown_token(client, db):
+    assert client.get('/api/v1/eventos/nope').status_code == 404

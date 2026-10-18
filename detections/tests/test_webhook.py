@@ -90,3 +90,15 @@ def test_google_id_token(post_detection, payload, email, expected):
     claims = {'email': email, 'email_verified': True}
     with patch('google.oauth2.id_token.verify_oauth2_token', return_value=claims):
         assert post_detection(payload, token='header.claims.signature').status_code == expected
+
+
+def test_event_template_second_button_opens_the_event_page(post_detection, payload, ong, sent, settings):
+    from detections.text import alert_template_definition
+    settings.WA_ALERT_TEMPLATE = 'condorin_evento'
+    post_detection(payload)
+    _, template, components = sent[0]
+    token = components[2]['parameters'][0]['text']
+    assert template == 'condorin_evento' and components[3]['parameters'][0]['text'] == token
+    buttons = alert_template_definition('h')['components'][3]['buttons']
+    assert [b['text'] for b in buttons] == ['Crear expediente', 'Ver evento']
+    assert buttons[1]['url'].endswith('/evento/{{1}}')

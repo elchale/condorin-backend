@@ -2,6 +2,7 @@
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied
@@ -9,6 +10,7 @@ from rest_framework.exceptions import NotFound, PermissionDenied
 from core import gcs
 from core.exceptions import BaseError
 from detections.models import Alert, Detection, SatelliteImage, default_expiry
+from detections.services import dispatch
 from expedientes.models import Expediente
 from expedientes.services import missing_fields
 from ongs.models import Member, Ong
@@ -47,7 +49,22 @@ def member_for_phone(phone: str) -> tuple[Member, bool]:
     )
     if not member.active:
         raise PermissionDenied('Tu acceso a esta ONG está desactivado. Escríbele a tu ONG.')
+    if created:
+        send_latest_alert(member)
     return member, created
+
+
+def send_latest_alert(member: Member) -> Alert | None:
+    """A new member gets the ONG's most recent alert by WhatsApp at once, so they see how Condorin works."""
+    image = (SatelliteImage.objects
+             .filter(river__in=member.ong.rivers.all(), detections__confidence__gte=settings.ALERT_MIN_CONFIDENCE)
+             .order_by('-captured_at').first())
+    if image is None:
+        return None
+    alert, created = Alert.objects.get_or_create(image=image, member=member)
+    if created:
+        transaction.on_commit(lambda: dispatch(image.pk))
+    return alert
 
 
 def incidents(ong: Ong) -> list[tuple[SatelliteImage, list[Detection], Expediente | None]]:

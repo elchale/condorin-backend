@@ -99,7 +99,7 @@ class LinkSignInView(FrontendView):
 
     def post(self, request):
         member = sign_in_by_link(str(request.data.get('token', '')).strip())
-        return Response({'phone': member.phone, 'name': member.full_name})
+        return Response({'phone': member.phone, 'name': member.full_name, 'ong': member.ong.display_name})
 
 
 class ActivityView(FrontendView):

@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 
-from core.geo import coord, distance_km
+from core.geo import coord, distance_km, maps_url
 from detections.models import SatelliteImage
 from detections.text import dragas, fecha_corta, fecha_larga
 
@@ -72,3 +72,31 @@ def draft_facts(image: SatelliteImage) -> str:
         'la verificación en el lugar por parte de la autoridad.'
     )
     return '\n\n'.join(paragraphs)
+
+
+def draft_place_reference(image: SatelliteImage) -> str:
+    """Where it is, in words an authority can find: river, district and the main point."""
+    river, best = image.river, image.alerting_detections().order_by('-confidence').first()
+    admin = ', '.join(p for p in [river.district, river.province, river.region] if p)
+    text = f'Río {river.name}' + (f', {admin}' if admin else '')
+    if best:
+        text += f'. Punto principal en {coord(best.lat)}, {coord(best.lon)} (WGS84)'
+    return text + '.'
+
+
+def draft_evidence_links(image: SatelliteImage) -> str:
+    """One map link per detection, so whoever reads the denuncia can open each point."""
+    return '\n'.join(maps_url(coord(d.lat), coord(d.lon)) for d in image.alerting_detections())
+
+
+def draft_risks(image: SatelliteImage) -> str:
+    river = image.river
+    text = (f'La minería aurífera en el río {river.name} usa mercurio, que contamina el agua y los peces que '
+            'consumen las comunidades ribereñas, y destruye el bosque y el cauce.')
+    if river.protected_area:
+        text += f' La actividad ocurre dentro del {river.protected_area}.'
+    return text
+
+
+FIELD_OBSERVATIONS = ('Sin verificación en campo por ahora. La detección se basa en imágenes satelitales; '
+                      'se solicita la constatación de la autoridad en el lugar.')

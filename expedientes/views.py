@@ -16,7 +16,7 @@ from core.whatsapp import WhatsAppError
 from . import codes, mailer
 from .models import Expediente
 from .pdf import build_pdf
-from .serializers import ExpedienteUpdateSerializer, expediente_payload
+from .serializers import ExpedienteUpdateSerializer, event_payload, expediente_payload
 from .services import alert_for_token, finalize, missing_fields, open_expediente, update_expediente
 
 
@@ -37,6 +37,15 @@ class ExpedienteView(APIView):
         serializer.is_valid(raise_exception=True)
         expediente = update_expediente(expediente, alert.member, dict(serializer.validated_data))
         return Response(expediente_payload(expediente, alert))
+
+
+class EventoView(APIView):
+    """GET /api/v1/eventos/<token>: the event page. Read only, so it never opens the expediente."""
+
+    throttle_scope = 'expediente'
+
+    def get(self, request, token):
+        return Response(event_payload(alert_for_token(token)))
 
 
 class ExpedienteSendView(APIView):

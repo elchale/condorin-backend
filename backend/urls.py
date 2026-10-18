@@ -3,7 +3,7 @@ from django.urls import path
 
 from core.views import healthz, landing
 from detections.views import DetectionWebhookView
-from expedientes.views import ExpedienteSendView, ExpedienteView
+from expedientes.views import EventoView, ExpedienteSendView, ExpedienteView
 from panel.views import ActivityView, LinkSignInView, PanelExpedienteView, PanelView
 
 admin.site.site_header = 'Condorin'
@@ -19,6 +19,7 @@ urlpatterns = [
 
     # Opened from the WhatsApp button; the token is personal to one ONG member and one incident.
     path('api/v1/expedientes/<str:token>', ExpedienteView.as_view(), name='expediente'),
+    path('api/v1/eventos/<str:token>', EventoView.as_view(), name='evento'),
     path('api/v1/expedientes/<str:token>/enviar', ExpedienteSendView.as_view(), name='expediente-send'),
 
     # Called only by the condorin.pe server (shared secret): the ONG panel, the WhatsApp link sign in

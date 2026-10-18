@@ -43,8 +43,14 @@ def url(alert, suffix=''):
     return f'/api/v1/expedientes/{alert.token}{suffix}'
 
 
-def patch(client, alert, data):
-    return client.patch(url(alert), json.dumps(data), content_type='application/json')
+def patch(client, alert, data, **headers):
+    return client.patch(url(alert), json.dumps(data), content_type='application/json', **headers)
+
+
+def code_session(phone, via='code'):
+    from accounts.session import session_token
+
+    return {'HTTP_AUTHORIZATION': f'Bearer {session_token(phone, via)}'}
 
 
 def send(client, alert, data=None):
@@ -223,13 +229,14 @@ def test_draft_pdf_preview(client, maria):
 
 def test_filing_receipt_locks_the_expediente(client, maria, fixed_code):
     patch(client, maria, COMPLETE)
-    early = patch(client, maria, {'filings': [{'authority': 'fema', 'receipt_number': 'X', 'filed_at': '2026-10-18'}]})
+    early = patch(client, maria, {'filings': [{'authority': 'fema', 'receipt_number': 'X', 'filed_at': '2026-10-18'}]},
+                  **code_session(maria.member.phone))
     assert early.status_code == 400
 
     finalize(client, maria, fixed_code)
     resp = patch(client, maria, {'filings': [
         {'authority': 'fema', 'receipt_number': 'MP-2026-000123', 'filed_at': '2026-10-18'},
-    ]})
+    ]}, **code_session(maria.member.phone))
     assert resp.json()['expediente']['status'] == 'filed'
     fema = next(a for a in resp.json()['authorities'] if a['code'] == 'fema')
     assert fema['filing']['receipt_number'] == 'MP-2026-000123'
@@ -323,3 +330,23 @@ def test_failed_code_send_can_be_retried_at_once(client, maria, monkeypatch):
     assert send(client, maria).json()['type'] == 'whatsapp_error'
     assert Expediente.objects.get().code_hash == ''
     assert send(client, maria).status_code == 202  # no 45 s wait after a code that never left
+
+
+@pytest.mark.parametrize('headers', [
+    {},                                                           # the link alone
+    'link',                                                       # a session opened from the WhatsApp link
+    'other',                                                      # a code session of someone else
+    {'HTTP_AUTHORIZATION': 'Bearer forged'},
+])
+def test_recording_a_filing_needs_a_code_session_of_that_member(client, maria, fixed_code, headers):
+    finalize(client, maria, fixed_code)
+    if headers == 'link':
+        headers = code_session(maria.member.phone, 'link')
+    elif headers == 'other':
+        headers = code_session('51999888777')
+    filing = {'filings': [{'authority': 'fema', 'receipt_number': 'MP-1', 'filed_at': '2026-10-18'}]}
+    resp = patch(client, maria, filing, **headers)
+    assert resp.status_code == 403 and resp.json()['type'] == 'code_session_required'
+    assert Expediente.objects.get().status == Expediente.Status.READY
+    # Other edits keep working with the link alone.
+    assert patch(client, maria, {'reopen': True}).status_code == 200

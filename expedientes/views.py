@@ -2,7 +2,8 @@
 
 GET    /api/v1/expedientes/<token>              open (creates and prefills it on the first tap)
 GET    /api/v1/expedientes/<token>?formato=pdf  the PDF: final once confirmed, BORRADOR before
-PATCH  /api/v1/expedientes/<token>              autosave fields, record filings, reopen
+PATCH  /api/v1/expedientes/<token>              autosave fields, record filings, reopen (filings also need
+                                                Authorization: Bearer <a code session of that member>)
 POST   /api/v1/expedientes/<token>/enviar       {} sends the WhatsApp code; {"code"} finalizes and emails it
 """
 from django.http import HttpResponse
@@ -11,6 +12,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.session import VIA_CODE, bearer_session
+from core.exceptions import BaseError
 from core.whatsapp import WhatsAppError
 
 from . import codes, mailer
@@ -27,6 +30,20 @@ from .services import (
     require_can_act,
     update_expediente,
 )
+
+
+class CodeSessionRequired(BaseError):
+    status_code = status.HTTP_403_FORBIDDEN
+    default_detail = ('Para registrar la presentación ante una autoridad, entra con el código que te enviamos '
+                      'por WhatsApp y vuelve a intentarlo.')
+
+
+def require_code_session(request, member) -> None:
+    """Recording a filing says the ONG filed the denuncia: the link alone (forwardable) is not enough, it takes a
+    session opened with a WhatsApp code sent to this same member."""
+    session = bearer_session(request)
+    if session is None or session[1] != VIA_CODE or session[0] != member.phone:
+        raise CodeSessionRequired()
 
 
 def _open(alert):
@@ -55,6 +72,8 @@ class ExpedienteView(APIView):
         expediente = _open(alert)
         serializer = ExpedienteUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        if serializer.validated_data.get('filings'):
+            require_code_session(request, alert.member)
         expediente = update_expediente(expediente, alert.member, dict(serializer.validated_data))
         return Response(expediente_payload(expediente, alert))
 

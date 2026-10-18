@@ -77,7 +77,7 @@ six for the browser sign in (map and static SPA), and the pages.
 |---|---|---|---|
 | POST | `/api/v1/detections` | detector | `Authorization: Bearer <Google ID token or shared secret>`, `Idempotency-Key`. 201 new, 200 duplicate. |
 | GET | `/api/v1/expedientes/<token>` | ONG member | Opens (and on first tap creates) the expediente, with everything the page needs. `?formato=pdf` returns the PDF. |
-| PATCH | `/api/v1/expedientes/<token>` | ONG member | Any subset of the fields (autosave), `authorities: [codes]`, `filings: [{authority, receipt_number, filed_at}]`, `reopen: true`. |
+| PATCH | `/api/v1/expedientes/<token>` | ONG member | Any subset of the fields (autosave), `authorities: [codes]`, `filings: [{authority, receipt_number, filed_at}]` (only with `Authorization: Bearer <session>` opened with a WhatsApp code by that same member, else 403 `code_session_required`), `reopen: true`. |
 | POST | `/api/v1/expedientes/<token>/enviar` | ONG member | `{}` checks completeness and sends the code (202). `{"code": "123456"}` finalizes and emails (200). |
 | GET | `/api/v1/panel` | condorin.pe server | `Authorization: Bearer <PANEL_API_SECRET>`, `X-Condorin-Phone`. The member, their ONG and its incidents with the next action. Joins the default ONG on first call (demo only) as an observer and sends the WhatsApp welcome, never an event. `member` carries `role` (`member` or `observer`) and `can_act`. |
 | POST | `/api/v1/panel/incidentes/<id>/expediente` | condorin.pe server | Same headers. The member's personal expediente token for that incident, created if they had no alert. |
@@ -98,7 +98,7 @@ six for the browser sign in (map and static SPA), and the pages.
 Errors always come back as `{"message", "type", "field_errors"}`. With a 400 from `/enviar`,
 `field_errors` lists exactly what is still missing, so the page can jump to it. Error `type`s the page
 should handle: `link_expired` (410), `code_invalid`, `code_expired`, `code_too_soon` (429), `code_limit` (429, more
-than 5 codes for one expediente in an hour), `expediente_locked` (409), `observer_restricted` (403), `whatsapp_error` (502).
+than 5 codes for one expediente in an hour), `expediente_locked` (409), `observer_restricted` (403), `code_session_required` (403, a filing sent without a code session), `whatsapp_error` (502).
 
 **Roles.** A member the ONG or the admins added (`role` `member`) opens, edits, confirms and files. Someone who joined the
 default ONG by signing in is an `observer` (admins with a phone always join as `member`; `DEFAULT_ONG_JOIN_ROLE=member`

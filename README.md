@@ -214,18 +214,13 @@ server and drops it at the end.
 
 ## Deploy
 
-Either platform works. Whichever serves `api.condorin.pe`, set the variables from `.env.template` and,
-before the first real alert:
+Cloud Run serves `api.condorin.pe` (a push to main deploys it, see `.github/workflows/ci.yml`). Set the
+variables from `.env.template` and, before the first real alert:
 
 1. `condorin_evento_v2` (no footer; buttons Crear expediente and Ver evento) is approved on the Qolca WABA (2026-10-17). New wording needs a new name: change `WA_ALERT_TEMPLATE` and run `create_alert_template --submit`.
 2. Give the GCS service account `storage.objects.get` on the detector buckets. It needs a key to sign links.
 3. Configure the detector: an OIDC token with audience `https://api.condorin.pe/api/v1/detections` from a
    service account listed in `DETECTIONS_ALLOWED_SERVICE_ACCOUNTS`, or the shared secret.
-
-### Railway
-
-`railway.json` builds with Nixpacks (`build_scripts/build.sh`), migrates on start, and runs gunicorn with
-threads. The health check is `/healthz/`.
 
 ### Cloud Run
 

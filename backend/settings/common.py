@@ -19,11 +19,6 @@ FRONTEND_URL = env('FRONTEND_URL', default='https://condorin.pe').rstrip('/')
 
 ALLOWED_HOSTS = [DOMAIN, 'localhost', '127.0.0.1']
 
-# Railway injects this; allow the public Railway domain when present
-_railway_domain = env('RAILWAY_PUBLIC_DOMAIN', default='')
-if _railway_domain:
-    ALLOWED_HOSTS.append(_railway_domain)
-
 # Other hosts that serve the API, comma separated (e.g. the Cloud Run URL: condorin-api-xxxx.a.run.app).
 _extra_hosts = env.list('EXTRA_ALLOWED_HOSTS', default=[])
 ALLOWED_HOSTS += _extra_hosts

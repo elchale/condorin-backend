@@ -262,3 +262,64 @@ def test_event_page_does_not_open_the_expediente(client, maria):
 
 def test_event_page_unknown_token(client, db):
     assert client.get('/api/v1/eventos/nope').status_code == 404
+
+
+def test_attempts_are_counted_in_the_database_not_on_a_stale_copy(client, maria, fixed_code):
+    """Parallel guesses each load the row once; the limit holds because every attempt is a conditional UPDATE."""
+    patch(client, maria, COMPLETE)
+    send(client, maria)
+    stale = Expediente.objects.get()  # what every parallel request loaded before guessing
+    member = Alert.objects.select_related('member').get(pk=maria.pk).member
+    for _ in range(codes.MAX_ATTEMPTS):
+        with pytest.raises(codes.CodeInvalid):
+            codes.check_code(stale, member, '000000')
+    with pytest.raises(codes.CodeExpired):
+        codes.check_code(stale, member, fixed_code)
+    assert Expediente.objects.get().code_attempts == codes.MAX_ATTEMPTS
+
+
+def test_a_code_is_used_once(client, maria, fixed_code):
+    patch(client, maria, COMPLETE)
+    send(client, maria)
+    first, second = Expediente.objects.get(), Expediente.objects.get()
+    member = Alert.objects.select_related('member').get(pk=maria.pk).member
+    codes.check_code(first, member, fixed_code)
+    with pytest.raises(codes.CodeExpired):
+        codes.check_code(second, member, fixed_code)
+
+
+def test_new_codes_are_capped_per_hour(client, maria, sent):
+    patch(client, maria, COMPLETE)
+
+    def wait_past_resend():
+        Expediente.objects.update(code_expires_at=timezone.now() + timedelta(minutes=codes.CODE_MINUTES)
+                                  - timedelta(seconds=codes.RESEND_SECONDS + 1))
+
+    for _ in range(codes.MAX_SENDS_PER_HOUR):
+        assert send(client, maria).status_code == 202
+        wait_past_resend()
+    limited = send(client, maria)
+    assert limited.status_code == 429 and limited.json()['type'] == 'code_limit'
+    assert len(sent) - 2 == codes.MAX_SENDS_PER_HOUR  # the two alerts, then one code per allowed request
+
+    Expediente.objects.update(code_sends_since=timezone.now() - timedelta(hours=1, minutes=1))
+    assert send(client, maria).status_code == 202
+
+
+def test_failed_code_send_can_be_retried_at_once(client, maria, monkeypatch):
+    from core import whatsapp
+
+    patch(client, maria, COMPLETE)
+
+    calls = []
+
+    def down_once(phone, code):
+        calls.append(phone)
+        if len(calls) == 1:
+            raise whatsapp.WhatsAppError('Meta down')
+        return 'wamid.code'
+
+    monkeypatch.setattr(whatsapp, 'send_code', down_once)
+    assert send(client, maria).json()['type'] == 'whatsapp_error'
+    assert Expediente.objects.get().code_hash == ''
+    assert send(client, maria).status_code == 202  # no 45 s wait after a code that never left

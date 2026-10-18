@@ -83,8 +83,17 @@ jobs:
       - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
       - run: docker build -t "$IMAGE" . && docker push "$IMAGE"
       - uses: google-github-actions/deploy-cloudrun@v2
+        # A healthy deploy takes about 30 s; a revision that never starts should not hold the job for 12 min.
+        timeout-minutes: 6
         with:
           service: condorin-api
           region: us-central1
           image: ${{ env.IMAGE }}
       - run: curl -fsS "$(gcloud run services describe condorin-api --region us-central1 --format='value(status.url)')/healthz/"
+      # When the revision fails, print why (Cloud Run's own conditions), so the log says it without console access.
+      - name: Why the revision failed
+        if: failure()
+        run: |
+          gcloud run services describe condorin-api --region us-central1 --format='yaml(status.conditions,status.latestCreatedRevisionName,status.latestReadyRevisionName)'
+          REV=$(gcloud run services describe condorin-api --region us-central1 --format='value(status.latestCreatedRevisionName)')
+          gcloud run revisions describe "$REV" --region us-central1 --format='yaml(status.conditions)'
